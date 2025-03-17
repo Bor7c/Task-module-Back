@@ -1,3 +1,5 @@
 from django.contrib import admin
+from .models import Task  # Импортируем вашу модель
 
-# Register your models here.
+# Регистрируем модель в админке
+admin.site.register(Task)

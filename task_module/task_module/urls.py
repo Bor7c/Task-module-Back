@@ -1,15 +1,14 @@
 from django.contrib import admin
-from django.urls import path, include
-from app.views.task_views import task_list 
+from django.urls import path, include, re_path
+from django.views.generic import TemplateView
 
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework import permissions
 
+from app.views.task_views import TaskListCreate  # Импортируем TaskListCreate из task_views.py
 
-from django.urls import path, re_path
-from django.views.generic import TemplateView
-
+# Настройка Swagger
 schema_view = get_schema_view(
     openapi.Info(
         title="Task API",
@@ -24,17 +23,16 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    # Админка Django
     path('admin/', admin.site.urls),
 
-    path('api/tasks/', TaskListCreate.as_view(), name='task-list'),  # API
-    re_path(r'^.*$', TemplateView.as_view(template_name='index.html')),  # Фронтенд
-    
+    # API для задач
+    path('api/tasks/', TaskListCreate.as_view(), name='task-list'),
+
+    # Swagger
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
-]
 
-
-
-urlpatterns = [
-   
+    # Маршрут для фронтенда (React)
+    re_path(r'^.*$', TemplateView.as_view(template_name='index.html')),
 ]

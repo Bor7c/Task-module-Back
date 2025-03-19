@@ -1,6 +1,7 @@
-from django.shortcuts import render
+from rest_framework import generics
 from ..models import Task
+from ..serializers import TaskSerializer
 
-def task_list(request):
-    tasks = Task.objects.all()
-    return render(request, 'myapp/task_list.html', {'tasks': tasks})
+class TaskListCreate(generics.ListCreateAPIView):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer

@@ -137,3 +137,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # Разрешить запросы с фронтенда
 ]
 
+
+# settings.py
+
+#AUTH_USER_MODEL = 'app.CustomUser'  # Указываем, что используем кастомную модель пользователя

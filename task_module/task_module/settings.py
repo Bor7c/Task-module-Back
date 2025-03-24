@@ -140,4 +140,20 @@ CORS_ALLOWED_ORIGINS = [
 
 # settings.py
 
-#AUTH_USER_MODEL = 'app.CustomUser'  # Указываем, что используем кастомную модель пользователя
+AUTH_USER_MODEL = 'app.User'  # app_name.ModelName (без 'Custom')
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ),
+}
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+}
+
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')

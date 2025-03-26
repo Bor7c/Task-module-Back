@@ -101,9 +101,36 @@ class LogoutView(APIView):
         return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
 
 class CurrentUserView(APIView):
-    """Текущий аутентифицированный пользователь"""
+    """Получение данных текущего аутентифицированного пользователя"""
     permission_classes = [permissions.IsAuthenticated]
     
+    @swagger_auto_schema(
+        operation_description="Получить данные текущего авторизованного пользователя",
+        responses={
+            200: openapi.Response(
+                description="Данные пользователя",
+                schema=UserSerializer,
+            ),
+            401: openapi.Response(
+                description="Пользователь не авторизован",
+                examples={
+                    "application/json": {
+                        "detail": "Учетные данные не были предоставлены."
+                    }
+                }
+            )
+        },
+        security=[{"Bearer": []}],
+        manual_parameters=[
+            openapi.Parameter(
+                'Authorization',
+                openapi.IN_HEADER,
+                description="JWT токен в формате 'Bearer {token}'",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ]
+    )
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)

@@ -5,6 +5,9 @@ from django.contrib.auth import authenticate, login, logout
 from ..models import User
 from ..serializers import UserSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
 
 class UserListView(generics.ListAPIView):
     """Список всех пользователей (только для админов)"""
@@ -33,6 +36,47 @@ class LoginView(APIView):
     """Аутентификация пользователя"""
     permission_classes = [permissions.AllowAny]
     
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['username', 'password'],
+            properties={
+                'username': openapi.Schema(type=openapi.TYPE_STRING),
+                'password': openapi.Schema(type=openapi.TYPE_STRING),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Успешная аутентификация",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'refresh': openapi.Schema(type=openapi.TYPE_STRING),
+                        'access': openapi.Schema(type=openapi.TYPE_STRING),
+                        'user': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'username': openapi.Schema(type=openapi.TYPE_STRING),
+                                'email': openapi.Schema(type=openapi.TYPE_STRING),
+                                'role': openapi.Schema(type=openapi.TYPE_STRING),
+                            }
+                        ),
+                    }
+                )
+            ),
+            401: openapi.Response(
+                description="Неверные учетные данные",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            )
+        },
+        operation_description="Аутентификация пользователя. Возвращает JWT токены и данные пользователя."
+    )
     def post(self, request):
         username = request.data.get('username')
         password = request.data.get('password')

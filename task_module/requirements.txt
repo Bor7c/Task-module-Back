@@ -4,3 +4,5 @@ drf-yasg==1.21.7
 psycopg2-binary==2.9.9
 django-cors-headers
 djangorestframework-simplejwt==5.2.2
+redis==4.5.5
+django-redis==5.2.0

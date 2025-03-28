@@ -5,10 +5,8 @@ from .views.user_views import (
     UserListView,
     UserDetailView,
     UserCreateView,
-    LoginView,
-    LogoutView,
-    CurrentUserView
 )
+from .views.auth_views import *
 
 urlpatterns = [
     # Маршруты для задач
@@ -23,7 +21,9 @@ urlpatterns = [
     path('users/', UserListView.as_view(), name='user-list'),
     path('users/<int:pk>/', UserDetailView.as_view(), name='user-detail'),
     path('users/create/', UserCreateView.as_view(), name='user-create'),
+
     path('login/', LoginView.as_view(), name='login'),
+    path('register/', RegisterView.as_view(), name='register'),
     path('logout/', LogoutView.as_view(), name='logout'),
-    path('current-user/', CurrentUserView.as_view(), name='current-user'),
+    path('check-auth/', CheckAuthView.as_view(), name='check-auth'),
 ]

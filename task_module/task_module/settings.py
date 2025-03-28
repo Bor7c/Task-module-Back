@@ -134,9 +134,21 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # Разрешить запросы с фронтенда
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",
 ]
 
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header'
+        }
+    },
+    'USE_SESSION_AUTH': False,
+}
 
 # settings.py
 
@@ -155,19 +167,16 @@ from datetime import timedelta
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://redis:6379/1",
+        "LOCATION": "redis://redis:6379/1",  # Используем имя сервиса 'redis'
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         }
     }
 }
 
-# JWT настройки
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-    'ROTATE_REFRESH_TOKENS': False,
-    'BLACKLIST_AFTER_ROTATION': True,
-}
+REDIS_HOST = 'redis'  # Имя сервиса в docker-compose
+REDIS_PORT = 6379
+REDIS_DB = 0
+
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')

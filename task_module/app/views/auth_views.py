@@ -4,16 +4,19 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import authenticate, logout
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model  # Используем get_user_model()
 from ..utils.auth import (
     create_or_get_session,
     delete_session,
     get_session_user,
     refresh_session
 )
-from ..serializers import UserBasicSerializer  # Изменено на UserBasicSerializer
+from ..serializers import UserBasicSerializer
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
+# Получаем модель пользователя
+User = get_user_model()
 
 
 class LoginView(APIView):
@@ -75,7 +78,7 @@ class LoginView(APIView):
         
         response_data = {
             "session_id": session_id,
-            "user": UserBasicSerializer(user).data  # Используем UserBasicSerializer
+            "user": UserBasicSerializer(user).data
         }
         
         response = Response(response_data, status=status.HTTP_200_OK)
@@ -162,7 +165,7 @@ class RegisterView(APIView):
         
         response_data = {
             "session_id": session_id,
-            "user": UserBasicSerializer(user).data  # Используем UserBasicSerializer
+            "user": UserBasicSerializer(user).data
         }
         
         response = Response(response_data, status=status.HTTP_201_CREATED)
@@ -187,7 +190,6 @@ class LogoutView(APIView):
                 name='X-Session-ID',
                 in_=openapi.IN_HEADER,
                 type=openapi.TYPE_STRING,
-                description='Идентификатор сессии',
                 required=True
             ),
         ],
@@ -268,6 +270,6 @@ class SessionCheckView(APIView):
         refresh_session(session_id)
         
         return Response(
-            UserBasicSerializer(user).data,  # Используем UserBasicSerializer
+            UserBasicSerializer(user).data,
             status=status.HTTP_200_OK
         )

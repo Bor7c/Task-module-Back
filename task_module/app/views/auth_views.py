@@ -1,77 +1,132 @@
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, logout
 from django.contrib.auth.models import User
-from ..utils.auth import * # Измененный импорт
-from ..serializers import UserSerializer
+from ..utils.auth import (
+    create_or_get_session,
+    delete_session,
+    get_session_user,
+    refresh_session
+)
+from ..serializers import UserBasicSerializer  # Изменено на UserBasicSerializer
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
     @swagger_auto_schema(
+        operation_description="Аутентификация пользователя",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             required=['username', 'password'],
             properties={
                 'username': openapi.Schema(type=openapi.TYPE_STRING),
-                'password': openapi.Schema(type=openapi.TYPE_STRING),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, format="password"),
             },
         ),
         responses={
-            200: openapi.Response('Successful login', UserSerializer),
-            401: 'Invalid credentials'
+            200: openapi.Response(
+                description="Успешная аутентификация",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'session_id': openapi.Schema(type=openapi.TYPE_STRING),
+                        'user': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'username': openapi.Schema(type=openapi.TYPE_STRING),
+                                'email': openapi.Schema(type=openapi.TYPE_STRING),
+                                'role': openapi.Schema(type=openapi.TYPE_STRING),
+                                'role_display': openapi.Schema(type=openapi.TYPE_STRING),
+                                'is_staff': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                            }
+                        )
+                    }
+                )
+            ),
+            401: "Неверные учетные данные",
+            400: "Не указаны имя пользователя или пароль"
         }
     )
     def post(self, request):
         username = request.data.get("username")
         password = request.data.get("password")
         
-        user = authenticate(request, username=username, password=password)
-        if user is not None:
-            # Используем функцию, которая возвращает существующую сессию или создает новую
-            session_id = create_or_get_session(user)
-            
-            response_data = {
-                "session_id": session_id,
-                "user": UserSerializer(user).data
-            }
-            
-            response = Response(response_data, status=status.HTTP_200_OK)
-            response.set_cookie(
-                "session_token", 
-                session_id, 
-                httponly=True, 
-                max_age=86400,
-                secure=False,
-                samesite='Lax'
+        if not username or not password:
+            return Response(
+                {"error": "Username and password are required"},
+                status=status.HTTP_400_BAD_REQUEST
             )
-            return response
-        return Response(
-            {"error": "Invalid credentials"}, 
-            status=status.HTTP_401_UNAUTHORIZED
+        
+        user = authenticate(request, username=username, password=password)
+        if user is None:
+            return Response(
+                {"error": "Invalid credentials"}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        session_id = create_or_get_session(user)
+        
+        response_data = {
+            "session_id": session_id,
+            "user": UserBasicSerializer(user).data  # Используем UserBasicSerializer
+        }
+        
+        response = Response(response_data, status=status.HTTP_200_OK)
+        response.set_cookie(
+            key="session_token",
+            value=session_id,
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite='Strict',
+            max_age=86400
         )
+        return response
 
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
     @swagger_auto_schema(
+        operation_description="Регистрация нового пользователя",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=['username', 'password'],
+            required=['username', 'password', 'email'],
             properties={
-                'username': openapi.Schema(type=openapi.TYPE_STRING),
-                'password': openapi.Schema(type=openapi.TYPE_STRING),
-                'email': openapi.Schema(type=openapi.TYPE_STRING),
+                'username': openapi.Schema(type=openapi.TYPE_STRING, min_length=4),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, min_length=8, format="password"),
+                'email': openapi.Schema(type=openapi.TYPE_STRING, format="email"),
             },
         ),
         responses={
-            201: openapi.Response('Successful registration', UserSerializer),
-            400: 'Username already exists'
+            201: openapi.Response(
+                description="Пользователь успешно зарегистрирован",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'session_id': openapi.Schema(type=openapi.TYPE_STRING),
+                        'user': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'username': openapi.Schema(type=openapi.TYPE_STRING),
+                                'email': openapi.Schema(type=openapi.TYPE_STRING),
+                                'role': openapi.Schema(type=openapi.TYPE_STRING),
+                                'role_display': openapi.Schema(type=openapi.TYPE_STRING),
+                                'is_staff': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                            }
+                        )
+                    }
+                )
+            ),
+            400: "Некорректные данные",
+            409: "Пользователь уже существует"
         }
     )
     def post(self, request):
@@ -79,68 +134,87 @@ class RegisterView(APIView):
         password = request.data.get("password")
         email = request.data.get("email", "")
         
-        if User.objects.filter(username=username).exists():
+        if not username or not password:
             return Response(
-                {"error": "Username already exists"}, 
+                {"error": "Username and password are required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        user = User.objects.create_user(username, email, password)
-        user = authenticate(request, username=username, password=password)
+        if len(password) < 8:
+            return Response(
+                {"error": "Password must be at least 8 characters long"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
-        # При регистрации тоже используем create_or_get_session
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {"error": "Username already exists"},
+                status=status.HTTP_409_CONFLICT
+            )
+        
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password
+        )
+        
         session_id = create_or_get_session(user)
         
         response_data = {
             "session_id": session_id,
-            "user": UserSerializer(user).data
+            "user": UserBasicSerializer(user).data  # Используем UserBasicSerializer
         }
         
         response = Response(response_data, status=status.HTTP_201_CREATED)
         response.set_cookie(
-            "session_token", 
-            session_id, 
-            httponly=True, 
-            max_age=86400,
-            secure=False,
-            samesite='Lax'
+            key="session_token",
+            value=session_id,
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite='Strict',
+            max_age=86400
         )
         return response
 
 
 class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
     @swagger_auto_schema(
+        operation_description="Выход из системы",
         manual_parameters=[
             openapi.Parameter(
-                name='session_token',
+                name='X-Session-ID',
                 in_=openapi.IN_HEADER,
                 type=openapi.TYPE_STRING,
-                description='Session token from cookie',
+                description='Идентификатор сессии',
                 required=True
             ),
         ],
         responses={
             200: openapi.Response(
-                description='Successfully logged out',
+                description="Успешный выход",
                 examples={
                     'application/json': {
                         "message": "Successfully logged out"
                     }
                 }
             ),
-            400: 'Invalid session token'
+            400: "Не указан идентификатор сессии",
+            401: "Не авторизован"
         }
     )
     def post(self, request):
-        session_id = request.headers.get('session_token') or request.COOKIES.get('session_token')
+        session_id = request.headers.get('X-Session-ID') or request.COOKIES.get('session_token')
         
         if not session_id:
             return Response(
-                {"error": "Session token is required"},
+                {"error": "Session ID is required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         delete_session(session_id)
+        logout(request)
         
         response = Response(
             {"message": "Successfully logged out"},
@@ -150,46 +224,50 @@ class LogoutView(APIView):
         return response
 
 
-class CheckAuthView(APIView):
+class SessionCheckView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
+        operation_description="Проверка активности сессии",
+        manual_parameters=[
+            openapi.Parameter(
+                name='X-Session-ID',
+                in_=openapi.IN_HEADER,
+                type=openapi.TYPE_STRING,
+                required=True
+            ),
+        ],
         responses={
-            200: openapi.Response('User data', openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    'user': openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                            'username': openapi.Schema(type=openapi.TYPE_STRING),
-                            'email': openapi.Schema(type=openapi.TYPE_STRING),
-                        }
-                    )
-                }
-            )),
-            401: 'Not authenticated or session expired'
+            200: openapi.Response(
+                description="Сессия активна",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'username': openapi.Schema(type=openapi.TYPE_STRING),
+                        'email': openapi.Schema(type=openapi.TYPE_STRING),
+                        'role': openapi.Schema(type=openapi.TYPE_STRING),
+                        'role_display': openapi.Schema(type=openapi.TYPE_STRING),
+                        'is_staff': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                    }
+                )
+            ),
+            401: "Сессия недействительна"
         }
     )
     def get(self, request):
-        session_id = request.COOKIES.get('session_token')
-        if not session_id:
+        session_id = request.headers.get('X-Session-ID')
+        user = get_session_user(session_id)
+        
+        if not user:
             return Response(
-                {"error": "Not authenticated"}, 
+                {"error": "Invalid session"},
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        session_data = get_session(session_id)
-        if not session_data:
-            return Response(
-                {"error": "Session expired or invalid"}, 
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+        refresh_session(session_id)
         
-        return Response({
-            "user": {
-                "id": session_data['user_id'],
-                "username": session_data['username'],
-                "email": session_data.get('email', '')
-            }
-        })
+        return Response(
+            UserBasicSerializer(user).data,  # Используем UserBasicSerializer
+            status=status.HTTP_200_OK
+        )

@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'drf_yasg',
     'rest_framework',
     'corsheaders',
+    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -55,6 +56,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'app.middleware.RedisSessionMiddleware',
 ]
 
 ROOT_URLCONF = 'task_module.urls'
@@ -154,11 +156,17 @@ SWAGGER_SETTINGS = {
 
 AUTH_USER_MODEL = 'app.User'  # app_name.ModelName (без 'Custom')
 
+
+
+
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
-    ),
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'app.utils.auth.RedisSessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 from datetime import timedelta
@@ -180,3 +188,51 @@ REDIS_DB = 0
 
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Your Project API',
+    'DESCRIPTION': 'Your project description',
+    'VERSION': '1.0.0',
+}
+
+# Настройки Swagger (drf-yasg)
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'SessionID': {
+            'type': 'apiKey',
+            'name': 'X-Session-ID',
+            'in': 'header'
+        }
+    },
+    'USE_SESSION_AUTH': False,  # Отключаем стандартную аутентификацию DRF
+    'LOGIN_URL': None,  # Убираем ссылки на логин
+    'LOGOUT_URL': None,  # Убираем ссылки на логаут
+}
+
+# Настройки drf-spectacular
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Task Management API',
+    'DESCRIPTION': 'API for managing tasks and comments',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SCHEMA_PATH_PREFIX': r'/api/',
+    'AUTHENTICATION_WHITELIST': [
+        'app.utils.auth.RedisSessionAuthentication',
+    ],
+}
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "IGNORE_EXCEPTIONS": True,
+        }
+    }
+}
+
+# Настройки сериализации
+SESSION_SERIALIZER = 'django.contrib.sessions.serializers.JSONSerializer'

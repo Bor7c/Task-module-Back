@@ -1,53 +1,125 @@
 from rest_framework import serializers
 from .models import Task, Comment, User
 
-class UserSerializer(serializers.ModelSerializer):
+class UserBasicSerializer(serializers.ModelSerializer):
+    role_display = serializers.CharField(source='get_role_display', read_only=True)
+    
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'role', 'is_staff']
+        fields = [
+            'id', 
+            'username', 
+            'email', 
+            'role',
+            'role_display',
+            'is_staff'
+        ]
+        read_only_fields = ['id', 'role_display', 'is_staff']
+
+class UserCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'username',
+            'email',
+            'password',
+            'first_name',
+            'last_name'
+        ]
         extra_kwargs = {
-            'password': {'write_only': True}  # Пароль не будет отображаться при сериализации
+            'password': {'write_only': True}
         }
 
     def create(self, validated_data):
-        user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data.get('email', ''),
-            password=validated_data['password'],
-            role=validated_data.get('role', 'developer')
-        )
+        user = User.objects.create_user(**validated_data)
         return user
 
 class CommentSerializer(serializers.ModelSerializer):
-    author = UserSerializer(read_only=True)  # Добавляем информацию об авторе
+    author = UserBasicSerializer(read_only=True)
+    author_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), 
+        source='author',
+        write_only=True,
+        required=False
+    )
     
     class Meta:
         model = Comment
-        fields = ['id', 'task', 'author', 'text', 'created_at']
-        read_only_fields = ['author', 'created_at']
+        fields = [
+            'id', 
+            'task', 
+            'author', 
+            'author_id',
+            'text', 
+            'created_at',
+            'is_system'
+        ]
+        read_only_fields = ['created_at', 'is_system']
 
-class TaskSerializer(serializers.ModelSerializer):
-    comments = CommentSerializer(many=True, read_only=True)
-    created_by = UserSerializer(read_only=True)
-    assigned_to = UserSerializer(read_only=True)
+class TaskListSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    responsible = UserBasicSerializer(read_only=True)
     
     class Meta:
         model = Task
         fields = [
-            'id', 
-            'title', 
-            'description', 
-            'status', 
-            'created_by',
-            'assigned_to',
-            'created_at', 
-            'updated_at', 
-            'comments'
+            'id',
+            'title',
+            'status',
+            'status_display',
+            'priority',
+            'priority_display',
+            'responsible',
+            'deadline',
+            'created_at'
         ]
-        read_only_fields = ['created_by', 'created_at', 'updated_at']
 
-class TaskCreateUpdateSerializer(serializers.ModelSerializer):
-    """Отдельный сериализатор для создания/обновления задач"""
+class TaskDetailSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    responsible = UserBasicSerializer(read_only=True)
+    created_by = UserBasicSerializer(read_only=True)
+    comments = CommentSerializer(many=True, read_only=True)
+    
     class Meta:
         model = Task
-        fields = ['title', 'description', 'status', 'assigned_to']
+        fields = [
+            'id',
+            'title',
+            'description',
+            'status',
+            'status_display',
+            'priority',
+            'priority_display',
+            'responsible',
+            'created_by',
+            'created_at',
+            'updated_at',
+            'deadline',
+            'comments'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+class TaskCreateUpdateSerializer(serializers.ModelSerializer):
+    responsible_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), 
+        source='responsible',
+        write_only=True,
+        required=False
+    )
+    
+    class Meta:
+        model = Task
+        fields = [
+            'title',
+            'description',
+            'status',
+            'priority',
+            'responsible_id',
+            'deadline'
+        ]
+        extra_kwargs = {
+            'status': {'required': False},
+            'priority': {'required': False}
+        }

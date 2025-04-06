@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from ..utils.auth import create_session, get_session, delete_session
+from ..utils.auth import * # Измененный импорт
 from ..serializers import UserSerializer
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -32,7 +32,8 @@ class LoginView(APIView):
         
         user = authenticate(request, username=username, password=password)
         if user is not None:
-            session_id = create_session(user)
+            # Используем функцию, которая возвращает существующую сессию или создает новую
+            session_id = create_or_get_session(user)
             
             response_data = {
                 "session_id": session_id,
@@ -87,7 +88,8 @@ class RegisterView(APIView):
         user = User.objects.create_user(username, email, password)
         user = authenticate(request, username=username, password=password)
         
-        session_id = create_session(user)
+        # При регистрации тоже используем create_or_get_session
+        session_id = create_or_get_session(user)
         
         response_data = {
             "session_id": session_id,
@@ -105,9 +107,6 @@ class RegisterView(APIView):
         )
         return response
 
-
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
 
 class LogoutView(APIView):
     @swagger_auto_schema(
@@ -133,12 +132,7 @@ class LogoutView(APIView):
         }
     )
     def post(self, request):
-        # Пробуем получить токен из заголовка (для Swagger)
-        session_id = request.headers.get('session_token')
-        
-        # Если нет в заголовке, пробуем из кук (для обычных запросов)
-        if not session_id:
-            session_id = request.COOKIES.get('session_token')
+        session_id = request.headers.get('session_token') or request.COOKIES.get('session_token')
         
         if not session_id:
             return Response(

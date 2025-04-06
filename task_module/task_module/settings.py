@@ -21,13 +21,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-@w$=d0piw#(v9401bzuf+1b35-sb5v_a3e6%er_44i%=!%*o9h'
-
-# SECURITY WARNING: don't run with debug turned on in production!
+# Настройки безопасности (для разработки)
+SECRET_KEY = 'django-insecure-...'  # В продакшене замените на переменную окружения
 DEBUG = True
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['*']  # Для разработки. В продакшене укажите конкретные хосты
+
+# Настройки CORS и CSRF
+CORS_ALLOW_ALL_ORIGINS = False  # Для явного указания разрешенных доменов
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
+
+# Настройки кук
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'  # Или 'None' если используете HTTPS
+CSRF_COOKIE_HTTPONLY = False  # Для доступа JavaScript к CSRF токену
+CSRF_COOKIE_SAMESITE = 'Lax'
 
 
 # Application definition
@@ -47,6 +59,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # Должно быть в начале
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -54,7 +67,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'app.middleware.RedisSessionMiddleware',
 ]
@@ -135,11 +147,7 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://localhost:3000",
-]
+
 
 SWAGGER_SETTINGS = {
     'SECURITY_DEFINITIONS': {

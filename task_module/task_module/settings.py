@@ -35,6 +35,28 @@ CORS_ALLOWED_ORIGINS = [
 ]
 CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
 
+CORS_ALLOW_CREDENTIALS = True
+
+# Разрешенные заголовки
+CORS_ALLOW_HEADERS = [
+    'x-session-id',
+    'content-type',
+    'authorization',
+    'accept',
+    'origin',
+    'x-csrftoken',
+]
+
+# Разрешенные методы
+CORS_ALLOW_METHODS = [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS',
+]
+
 # Настройки кук
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'  # Или 'None' если используете HTTPS

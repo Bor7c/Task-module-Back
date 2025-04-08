@@ -28,7 +28,8 @@ class RedisSessionAuthentication(authentication.BaseAuthentication):
     """Кастомный класс аутентификации через Redis сессии"""
     
     def authenticate(self, request):
-        session_id = request.headers.get('X-Session-ID')
+        # Пробуем получить session_id из кук или заголовков
+        session_id = request.COOKIES.get('session_token') or request.headers.get('X-Session-ID')
         
         if not session_id:
             return None

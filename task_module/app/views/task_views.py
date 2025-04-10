@@ -83,7 +83,7 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [IsAuthenticated]
     queryset = Task.objects.all().select_related('responsible', 'created_by')
-    lookup_field = 'id'
+    lookup_field = 'pk'
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:

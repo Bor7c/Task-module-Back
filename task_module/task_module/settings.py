@@ -57,11 +57,16 @@ CORS_ALLOW_METHODS = [
     'OPTIONS',
 ]
 
+# Настройки сессии и кук
+SESSION_COOKIE_AGE = 86400  # 1 день в секундах
+
 # Настройки кук
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'  # Или 'None' если используете HTTPS
 CSRF_COOKIE_HTTPONLY = False  # Для доступа JavaScript к CSRF токену
 CSRF_COOKIE_SAMESITE = 'Lax'
+
+
 
 
 # Application definition

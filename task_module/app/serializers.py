@@ -35,29 +35,38 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return user
 
 class CommentSerializer(serializers.ModelSerializer):
-    author_info = serializers.SerializerMethodField(read_only=True)
+    author = serializers.SerializerMethodField()
     
     class Meta:
         model = Comment
-        fields = [
-            'id',
-            'text',
-            'author_info',  # Добавляем информацию об авторе
-            'created_at',
-            'is_system'
-        ]
-        read_only_fields = ['id', 'author_info', 'created_at', 'is_system']
-    
-    def get_author_info(self, obj):
-        """Возвращает основную информацию об авторе комментария"""
+        fields = ['id', 'text', 'author', 'created_at', 'is_system']
+        extra_kwargs = {
+            'text': {
+                'required': True,
+                'allow_blank': False,  # Запрещаем пустые строки
+                'error_messages': {
+                    'blank': 'Текст комментария не может быть пустым'
+                }
+            }
+        }
+
+    def validate_text(self, value):
+        """Дополнительная валидация текста"""
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Текст комментария не может быть пустым")
+        return value
+
+    def get_author(self, obj):
+        """Информация об авторе"""
+        if obj.is_system:
+            return {'username': 'system', 'id': None}
         if not obj.author:
             return None
-            
         return {
             'id': obj.author.id,
             'username': obj.author.username,
-            'role': obj.author.role,
-            'initials': (obj.author.username[:2].upper() if obj.author.username else '??')
+            'role': obj.author.role
         }
 
 class TaskListSerializer(serializers.ModelSerializer):

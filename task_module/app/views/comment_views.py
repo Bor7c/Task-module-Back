@@ -1,4 +1,3 @@
-# app/views/comment_views.py
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -55,7 +54,7 @@ class CommentListCreateView(generics.ListCreateAPIView):
         }
     )
     def get(self, request, *args, **kwargs):
-        self.get_session_user()  # Проверка сессии
+        self.get_session_user()
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
@@ -85,14 +84,46 @@ class CommentListCreateView(generics.ListCreateAPIView):
         }
     )
     def post(self, request, *args, **kwargs):
-        self.get_session_user()  # Проверка сессии
-        return super().post(request, *args, **kwargs)
+        # Создаем копию данных для безопасного изменения
+        data = request.data.copy()
+        text = data.get('text', '').strip()
+        
+        # Валидация текста
+        if not text:
+            return Response(
+                {"error": "Текст комментария не может быть пустым"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Обновляем текст в данных
+        data['text'] = text
+        
+        # Создаем и валидируем сериализатор
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Сохраняем комментарий
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
         task_id = self.kwargs['task_id']
         task = Task.objects.get(id=task_id)
         user = self.get_session_user()
-        serializer.save(task=task, author=user) 
+        
+        # Дополнительная проверка текста
+        text = serializer.validated_data.get('text', '').strip()
+        if not text:
+            raise serializers.ValidationError("Текст комментария не может быть пустым")
+        
+        print("Сохранение комментария:", {
+            'text': text,
+            'task': task.id,
+            'author': user.id
+        })
+        
+        serializer.save(task=task, author=user, text=text)
 
 class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [RedisSessionAuthentication]
@@ -101,7 +132,6 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CommentSerializer
 
     def get_session_user(self):
-        """Получаем пользователя из сессии (из кук или заголовков)"""
         session_id = self.request.COOKIES.get('session_token') or self.request.headers.get('X-Session-ID')
         user = get_session_user(session_id)
         if not user:
@@ -130,7 +160,7 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def get(self, request, *args, **kwargs):
-        self.get_session_user()  # Проверка сессии
+        self.get_session_user()
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
@@ -153,7 +183,7 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def put(self, request, *args, **kwargs):
-        self.get_session_user()  # Проверка сессии
+        self.get_session_user()
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
@@ -176,7 +206,7 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def patch(self, request, *args, **kwargs):
-        self.get_session_user()  # Проверка сессии
+        self.get_session_user()
         return super().patch(request, *args, **kwargs)
 
     @swagger_auto_schema(
@@ -198,5 +228,5 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def delete(self, request, *args, **kwargs):
-        self.get_session_user()  # Проверка сессии
+        self.get_session_user()
         return super().delete(request, *args, **kwargs)

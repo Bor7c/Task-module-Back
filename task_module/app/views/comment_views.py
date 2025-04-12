@@ -92,7 +92,7 @@ class CommentListCreateView(generics.ListCreateAPIView):
         task_id = self.kwargs['task_id']
         task = Task.objects.get(id=task_id)
         user = self.get_session_user()
-        serializer.save(task=task, author=user)
+        serializer.save(task=task, author=user) 
 
 class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [RedisSessionAuthentication]

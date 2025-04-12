@@ -35,26 +35,30 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return user
 
 class CommentSerializer(serializers.ModelSerializer):
-    author = UserBasicSerializer(read_only=True)
-    author_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), 
-        source='author',
-        write_only=True,
-        required=False
-    )
+    author_info = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = Comment
         fields = [
-            'id', 
-            'task', 
-            'author', 
-            'author_id',
-            'text', 
+            'id',
+            'text',
+            'author_info',  # Добавляем информацию об авторе
             'created_at',
             'is_system'
         ]
-        read_only_fields = ['created_at', 'is_system']
+        read_only_fields = ['id', 'author_info', 'created_at', 'is_system']
+    
+    def get_author_info(self, obj):
+        """Возвращает основную информацию об авторе комментария"""
+        if not obj.author:
+            return None
+            
+        return {
+            'id': obj.author.id,
+            'username': obj.author.username,
+            'role': obj.author.role,
+            'initials': (obj.author.username[:2].upper() if obj.author.username else '??')
+        }
 
 class TaskListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)

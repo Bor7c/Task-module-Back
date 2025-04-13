@@ -12,7 +12,7 @@ from rest_framework.exceptions import PermissionDenied
 class TaskListCreateView(generics.ListCreateAPIView):
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [IsAuthenticated]
-    queryset = Task.objects.all().select_related('responsible', 'created_by')
+    queryset = Task.objects.filter(is_deleted=False).select_related('responsible', 'created_by')
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -23,7 +23,6 @@ class TaskListCreateView(generics.ListCreateAPIView):
         return 'X-Session-ID'
 
     def get_session_user(self):
-        """Получаем пользователя из сессии (из кук или заголовков)"""
         session_id = self.request.COOKIES.get('session_token') or self.request.headers.get('X-Session-ID')
         user = get_session_user(session_id)
         if not user:
@@ -48,7 +47,6 @@ class TaskListCreateView(generics.ListCreateAPIView):
         }
     )
     def get(self, request, *args, **kwargs):
-        # Проверяем валидность сессии перед выполнением
         self.get_session_user()
         return super().get(request, *args, **kwargs)
 
@@ -71,18 +69,20 @@ class TaskListCreateView(generics.ListCreateAPIView):
         }
     )
     def post(self, request, *args, **kwargs):
-        # Проверяем валидность сессии перед выполнением
         self.get_session_user()
         return super().post(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         user = self.get_session_user()
-        serializer.save(created_by=user)
+        serializer.save(created_by=user, status='unassigned')
+
+
+
 
 class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [IsAuthenticated]
-    queryset = Task.objects.all().select_related('responsible', 'created_by')
+    queryset = Task.objects.filter(is_deleted=False).select_related('responsible', 'created_by')
     lookup_field = 'pk'
 
     def get_serializer_class(self):
@@ -94,7 +94,6 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         return 'X-Session-ID'
 
     def get_session_user(self):
-        """Получаем пользователя из сессии (из кук или заголовков)"""
         session_id = self.request.COOKIES.get('session_token') or self.request.headers.get('X-Session-ID')
         user = get_session_user(session_id)
         if not user:
@@ -120,7 +119,6 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def get(self, request, *args, **kwargs):
-        # Проверяем валидность сессии перед выполнением
         self.get_session_user()
         return super().get(request, *args, **kwargs)
 
@@ -144,7 +142,6 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def put(self, request, *args, **kwargs):
-        # Проверяем валидность сессии перед выполнением
         self.get_session_user()
         return super().put(request, *args, **kwargs)
 
@@ -168,7 +165,6 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def patch(self, request, *args, **kwargs):
-        # Проверяем валидность сессии перед выполнением
         self.get_session_user()
         return super().patch(request, *args, **kwargs)
 
@@ -191,6 +187,6 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def delete(self, request, *args, **kwargs):
-        # Проверяем валидность сессии перед выполнением
-        self.get_session_user()
-        return super().delete(request, *args, **kwargs)
+        task = self.get_object()
+        task.delete()  # Используем мягкое удаление
+        return Response(status=status.HTTP_204_NO_CONTENT)

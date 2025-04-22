@@ -1,0 +1,3 @@
+INFO 2025-04-22 20:00:10,665 autoreload Watching for file changes with StatReloader
+INFO 2025-04-22 20:00:32,199 autoreload /app/task_module/settings.py changed, reloading.
+INFO 2025-04-22 20:00:32,509 autoreload Watching for file changes with StatReloader

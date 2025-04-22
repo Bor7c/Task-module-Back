@@ -4,6 +4,8 @@ FROM python:3.10-slim
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
+RUN mkdir -p /app/logs && chmod -R 777 /app/logs
+
 # Устанавливаем системные зависимости
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \

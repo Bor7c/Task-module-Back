@@ -1,13 +1,17 @@
+import logging
 from rest_framework import generics, status, serializers
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, NotFound
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from ..models import Task, Comment
 from ..serializers import CommentSerializer
 from app.utils.auth import RedisSessionAuthentication, get_session_user
+import traceback
+from django.utils import timezone
 
+logger = logging.getLogger(__name__)
 
 class CommentListCreateView(generics.ListCreateAPIView):
     authentication_classes = [RedisSessionAuthentication]
@@ -19,12 +23,18 @@ class CommentListCreateView(generics.ListCreateAPIView):
         session_id = self.request.COOKIES.get('session_token') or self.request.headers.get('X-Session-ID')
         user = get_session_user(session_id)
         if not user:
+            logger.warning(f"Invalid session attempt: {session_id}")
             raise PermissionDenied("Сессия недействительна или истекла")
+        logger.debug(f"Authenticated user: {user.username} (ID: {user.id})")
         return user
 
     def get_queryset(self):
         task_id = self.kwargs['task_id']
-        return Comment.objects.filter(task_id=task_id, is_deleted=False).select_related('author')
+        logger.debug(f"Getting comments for task ID: {task_id}")
+        return Comment.objects.filter(
+            task_id=task_id, 
+            is_deleted=False
+        ).select_related('author', 'task')
 
     def get_authenticate_header(self, request):
         return 'X-Session-ID'
@@ -55,8 +65,17 @@ class CommentListCreateView(generics.ListCreateAPIView):
         }
     )
     def get(self, request, *args, **kwargs):
-        self.get_session_user()
-        return super().get(request, *args, **kwargs)
+        logger.info(f"GET comments for task ID: {kwargs['task_id']}")
+        try:
+            task = Task.objects.get(id=kwargs['task_id'])
+            logger.debug(f"Task found: {task.title} (ID: {task.id})")
+        except Task.DoesNotExist:
+            logger.error(f"Task not found: ID {kwargs['task_id']}")
+            raise NotFound("Задача не найдена")
+            
+        response = super().get(request, *args, **kwargs)
+        logger.debug(f"Returning {len(response.data)} comments")
+        return response
 
     @swagger_auto_schema(
         operation_description="Создать новый комментарий к задаче",
@@ -96,76 +115,103 @@ class CommentListCreateView(generics.ListCreateAPIView):
         }
     )
     def post(self, request, *args, **kwargs):
-        # Проверяем авторизацию
         user = self.get_session_user()
+        logger.info(f"User {user.username} creating comment for task {kwargs['task_id']}")
         
-        # Валидируем текст
         text = request.data.get('text', '').strip()
+        logger.debug(f"Received text: '{text}'")
+        
         if not text:
+            logger.warning("Empty comment text provided")
             return Response(
                 {"error": "Текст комментария не может быть пустым"},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Создаем данные для сериализатора
-        data = {
-            'text': text,
-            'task': kwargs['task_id'],
-            'author': user.id
-        }
+        try:
+            task = Task.objects.get(id=kwargs['task_id'])
+            logger.debug(f"Task found: {task.title}")
+        except Task.DoesNotExist:
+            logger.error(f"Task not found: ID {kwargs['task_id']}")
+            raise NotFound("Задача не найдена")
         
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-
-    def perform_create(self, serializer):
-        task_id = self.kwargs['task_id']
-        task = Task.objects.get(id=task_id)
-        user = self.get_session_user()
-        serializer.save(task=task, author=user)
+        try:
+            comment = Comment.objects.create(
+                text=text,
+                task=task,
+                author=user
+            )
+            logger.info(
+                f"Comment created successfully\n"
+                f"Comment ID: {comment.id}\n"
+                f"Task: {task.title} (ID: {task.id})\n"
+                f"Author: {user.username} (ID: {user.id})\n"
+                f"Text length: {len(text)} characters"
+            )
+            
+            serializer = self.get_serializer(comment)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to create comment\n"
+                f"Error: {str(e)}\n"
+                f"Task ID: {kwargs['task_id']}\n"
+                f"User ID: {user.id}"
+            )
+            return Response(
+                {"error": "Не удалось создать комментарий"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [IsAuthenticated]
-    queryset = Comment.objects.filter(is_deleted=False).select_related('author')
     serializer_class = CommentSerializer
     lookup_field = 'id'
+    lookup_url_kwarg = 'pk'
+
+    def get_queryset(self):
+        logger.debug(f"Getting comment with ID: {self.kwargs.get('pk')}")
+        return Comment.objects.filter(is_deleted=False).select_related('author', 'task')
 
     def get_session_user(self):
         session_id = self.request.COOKIES.get('session_token') or self.request.headers.get('X-Session-ID')
         user = get_session_user(session_id)
         if not user:
+            logger.warning(f"Invalid session attempt: {session_id}")
             raise PermissionDenied("Сессия недействительна или истекла")
+        logger.debug(f"Authenticated user: {user.username} (ID: {user.id})")
         return user
 
-    def get_authenticate_header(self, request):
-        return 'X-Session-ID'
-
-    @swagger_auto_schema(
-        operation_description="Получить детали комментария",
-        manual_parameters=[
-            openapi.Parameter(
-                'X-Session-ID',
-                openapi.IN_HEADER,
-                description="Идентификатор сессии",
-                type=openapi.TYPE_STRING,
-                required=True
+    def get_object(self):
+        try:
+            comment = super().get_object()
+            user = self.get_session_user()
+            
+            logger.debug(
+                f"Accessing comment ID: {comment.id}\n"
+                f"Author: {comment.author.username} (ID: {comment.author.id})\n"
+                f"Task: {comment.task.title} (ID: {comment.task.id})"
             )
-        ],
-        responses={
-            200: CommentSerializer,
-            401: 'Не авторизован',
-            403: 'Доступ запрещен',
-            404: 'Комментарий не найден'
-        }
-    )
-    def get(self, request, *args, **kwargs):
-        self.get_session_user()
-        return super().get(request, *args, **kwargs)
+            
+            if self.request.method == 'GET':
+                return comment
+                
+            if comment.author != user and not user.is_staff:
+                logger.warning(
+                    f"Unauthorized edit attempt\n"
+                    f"User: {user.username} (ID: {user.id})\n"
+                    f"Comment author: {comment.author.username} (ID: {comment.author.id})"
+                )
+                raise PermissionDenied("Вы не можете изменять этот комментарий")
+            return comment
+            
+        except Exception as e:
+            logger.error(f"Error getting comment: {str(e)}")
+            raise
 
     @swagger_auto_schema(
         operation_description="Обновить комментарий",
@@ -198,8 +244,53 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def put(self, request, *args, **kwargs):
-        self.get_session_user()
-        return super().put(request, *args, **kwargs)
+        comment = self.get_object()
+        user = self.get_session_user()
+        text = request.data.get('text', '').strip()
+        
+        logger.info(
+            f"PUT comment update request\n"
+            f"Comment ID: {comment.id}\n"
+            f"User: {user.username} (ID: {user.id})\n"
+            f"Current text: '{comment.text}'\n"
+            f"New text: '{text}'"
+        )
+        
+        if not text:
+            logger.warning("Empty text in PUT request")
+            return Response(
+                {"error": "Текст комментария не может быть пустым"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            old_text = comment.text
+            comment.text = text
+            comment.save()
+            comment.refresh_from_db()
+            
+            logger.info(
+                f"Comment updated successfully\n"
+                f"Comment ID: {comment.id}\n"
+                f"Old text: '{old_text}'\n"
+                f"New text: '{comment.text}'\n"
+                f"Updated at: {comment.updated_at}"
+            )
+            
+            serializer = self.get_serializer(comment)
+            return Response(serializer.data)
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to update comment\n"
+                f"Comment ID: {comment.id}\n"
+                f"Error: {str(e)}"
+            )
+            return Response(
+                {"error": "Не удалось обновить комментарий"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
     @swagger_auto_schema(
         operation_description="Частично обновить комментарий",
@@ -231,11 +322,70 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def patch(self, request, *args, **kwargs):
-        self.get_session_user()
-        return super().patch(request, *args, **kwargs)
+        comment = self.get_object()
+        user = self.get_session_user()
+        text = request.data.get('text', '').strip()
+        
+        logger.info(
+            f"PATCH comment update request\n"
+            f"Comment ID: {comment.id}\n"
+            f"User: {user.username} (ID: {user.id})\n"
+            f"Current text: '{comment.text}'\n"
+            f"New text: '{text}'"
+        )
+        
+        if not text:
+            logger.info("No text provided, returning current comment")
+            serializer = self.get_serializer(comment)
+            return Response(serializer.data)
+            
+        if len(text) < 2:
+            logger.warning(f"Text too short: {len(text)} characters")
+            return Response(
+                {"error": "Комментарий должен содержать минимум 2 символа"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Используем прямое обновление через QuerySet для гарантии сохранения
+            updated = Comment.objects.filter(id=comment.id).update(
+                text=text,
+                updated_at=timezone.now()
+            )
+            
+            if not updated:
+                logger.error(f"No rows were updated for comment ID: {comment.id}")
+                return Response(
+                    {"error": "Комментарий не был обновлен"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # Получаем обновленный комментарий
+            updated_comment = Comment.objects.get(id=comment.id)
+            logger.info(
+                f"Comment updated successfully (rows affected: {updated})\n"
+                f"Comment ID: {updated_comment.id}\n"
+                f"New text: '{updated_comment.text}'\n"
+                f"Updated at: {updated_comment.updated_at}"
+            )
+            
+            serializer = self.get_serializer(updated_comment)
+            return Response(serializer.data)
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to update comment\n"
+                f"Comment ID: {comment.id}\n"
+                f"Error: {str(e)}\n"
+                f"Stack trace: {traceback.format_exc()}"
+            )
+            return Response(
+                {"error": "Не удалось обновить комментарий"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @swagger_auto_schema(
-        operation_description="Удалить комментарий",
+        operation_description="Удалить комментарий (мягкое удаление)",
         manual_parameters=[
             openapi.Parameter(
                 'X-Session-ID',
@@ -254,6 +404,35 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
     )
     def delete(self, request, *args, **kwargs):
         comment = self.get_object()
-        comment.is_deleted = True
-        comment.save()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        user = self.get_session_user()
+        
+        logger.info(
+            f"DELETE comment request\n"
+            f"Comment ID: {comment.id}\n"
+            f"User: {user.username} (ID: {user.id})\n"
+            f"Current text: '{comment.text}'"
+        )
+        
+        try:
+            comment.is_deleted = True
+            comment.save()
+            
+            logger.info(
+                f"Comment marked as deleted\n"
+                f"Comment ID: {comment.id}\n"
+                f"Deleted by: {user.username} (ID: {user.id})\n"
+                f"Deleted at: {comment.updated_at}"
+            )
+            
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to delete comment\n"
+                f"Comment ID: {comment.id}\n"
+                f"Error: {str(e)}"
+            )
+            return Response(
+                {"error": "Не удалось удалить комментарий"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

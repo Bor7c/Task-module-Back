@@ -402,37 +402,33 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
             404: 'Комментарий не найден'
         }
     )
+
     def delete(self, request, *args, **kwargs):
         comment = self.get_object()
         user = self.get_session_user()
         
-        logger.info(
-            f"DELETE comment request\n"
-            f"Comment ID: {comment.id}\n"
-            f"User: {user.username} (ID: {user.id})\n"
-            f"Current text: '{comment.text}'"
-        )
+        logger.info(f"Attempt to delete comment ID: {comment.id}")
         
         try:
-            comment.is_deleted = True
-            comment.save()
-            
-            logger.info(
-                f"Comment marked as deleted\n"
-                f"Comment ID: {comment.id}\n"
-                f"Deleted by: {user.username} (ID: {user.id})\n"
-                f"Deleted at: {comment.updated_at}"
+            # Явное обновление через QuerySet
+            updated = Comment.objects.filter(id=comment.id).update(
+                is_deleted=True,
+                updated_at=timezone.now()
             )
             
+            if not updated:
+                logger.error(f"No rows updated for comment ID: {comment.id}")
+                return Response(
+                    {"error": "Не удалось обновить комментарий"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            logger.info(f"Comment ID: {comment.id} marked as deleted")
             return Response(status=status.HTTP_204_NO_CONTENT)
             
         except Exception as e:
-            logger.error(
-                f"Failed to delete comment\n"
-                f"Comment ID: {comment.id}\n"
-                f"Error: {str(e)}"
-            )
+            logger.error(f"Delete failed: {str(e)}")
             return Response(
-                {"error": "Не удалось удалить комментарий"},
+                {"error": "Ошибка при удалении"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

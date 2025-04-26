@@ -30,8 +30,6 @@ class User(AbstractUser):
 
 class Task(models.Model):
     STATUS_CHOICES = [
-        ('unassigned', 'Не назначен'),
-        ('assigned', 'Назначен'),
         ('in_progress', 'В работе'),
         ('solved', 'Решен'),
         ('closed', 'Закрыт'),
@@ -39,6 +37,7 @@ class Task(models.Model):
         ('awaiting_action', 'Ожидает действий'),
     ]
 
+    # Приоритеты оставляем без изменений
     PRIORITY_CHOICES = [
         ('low', 'Низкий'),
         ('medium', 'Средний'),
@@ -46,19 +45,12 @@ class Task(models.Model):
         ('critical', 'Критический'),
     ]
 
-    title = models.CharField(
-        max_length=255,
-        verbose_name='Название'
-    )
-    description = models.TextField(
-        verbose_name='Описание',
-        blank=True,
-        null=True
-    )
+    title = models.CharField(max_length=255, verbose_name='Название')
+    description = models.TextField(blank=True, null=True, verbose_name='Описание')
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default='unassigned',
+        default='awaiting_action',
         verbose_name='Статус'
     )
     priority = models.CharField(
@@ -74,36 +66,23 @@ class Task(models.Model):
         blank=True,
         related_name='tasks',
         verbose_name='Ответственный',
-        limit_choices_to={'is_active': True}  # Только активные пользователи
+        limit_choices_to={'is_active': True}
+    )
+    is_assigned = models.BooleanField(
+        default=False,
+        verbose_name='Назначен ли ответственный'
     )
     created_by = models.ForeignKey(
         User,
-        on_delete=models.PROTECT,  # Защита от удаления создателя
+        on_delete=models.PROTECT,
         related_name='created_tasks',
         verbose_name='Создатель'
     )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name='Дата создания'
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        verbose_name='Дата обновления'
-    )
-    closed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name='Дата закрытия'
-    )
-    deadline = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name='Срок выполнения'
-    )
-    is_deleted = models.BooleanField(
-        default=False,
-        verbose_name='Удалено'
-    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
+    closed_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата закрытия')
+    deadline = models.DateTimeField(null=True, blank=True, verbose_name='Срок выполнения')
+    is_deleted = models.BooleanField(default=False, verbose_name='Удалено')
 
     class Meta:
         verbose_name = 'Задача'
@@ -116,23 +95,26 @@ class Task(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.title} (Статус: {self.get_status_display()})"
+        return f"{self.title} (Статус: {self.get_status_display()}, Назначен: {'Да' if self.is_assigned else 'Нет'})"
 
     def save(self, *args, **kwargs):
-        # Автоматическая установка/сброс даты закрытия
         if self.pk:
             original = Task.objects.get(pk=self.pk)
             if self.status == 'closed' and original.status != 'closed':
                 self.closed_at = timezone.now()
             elif self.status != 'closed' and original.status == 'closed':
                 self.closed_at = None
-        
+
+        # Обновляем is_assigned в зависимости от наличия responsible
+        self.is_assigned = bool(self.responsible)
+
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         """Мягкое удаление"""
         self.is_deleted = True
         self.save(update_fields=['is_deleted'])
+
 
 class Comment(models.Model):
     task = models.ForeignKey(

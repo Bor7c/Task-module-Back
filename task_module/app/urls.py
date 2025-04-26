@@ -3,7 +3,7 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework import permissions
 
-from .views.task_views import TaskListCreateView, TaskDetailView
+from .views.task_views import TaskListCreateView, TaskDetailView, AssignResponsibleView, RemoveResponsibleView, AssignToMeView
 from .views.comment_views import CommentListCreateView, CommentDetailView
 from .views.user_views import UserListView, UserDetailView, UserCreateView
 from .views.auth_views import LoginView, RegisterView, LogoutView, SessionCheckView
@@ -39,7 +39,10 @@ urlpatterns = [
     # Задачи
     path('tasks/', TaskListCreateView.as_view(), name='task-list'),
     path('tasks/<int:pk>/', TaskDetailView.as_view(), name='task-detail'),
-    
+    path('tasks/<int:task_id>/assign_to_me/', AssignToMeView.as_view(), name='assign_to_me'),
+    path('tasks/<int:pk>/assign_responsible/', AssignResponsibleView.as_view(), name='assign-responsible'),
+    path('tasks/<int:pk>/remove_responsible/', RemoveResponsibleView.as_view(), name='remove-responsible'),
+
     # Комментарии
     path('tasks/<int:task_id>/comments/', CommentListCreateView.as_view(), name='task-comment-list'),
     path('comments/<int:pk>/', CommentDetailView.as_view(), name='comment-detail'),

@@ -7,9 +7,9 @@ from ..serializers import UserBasicSerializer, UserCreateSerializer
 from app.utils.auth import RedisSessionAuthentication, get_session_user
 
 class UserListView(generics.ListAPIView):
-    """Получение списка пользователей (только для администраторов)"""
+    """Получение списка пользователей (для всех авторизованных)"""
     authentication_classes = [RedisSessionAuthentication]
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated]  # <--- изменено тут
     queryset = User.objects.all()
     serializer_class = UserBasicSerializer
 
@@ -19,7 +19,7 @@ class UserListView(generics.ListAPIView):
             openapi.Parameter(
                 'X-Session-ID',
                 openapi.IN_HEADER,
-                description="Идентификатор сессии администратора",
+                description="Идентификатор сессии",
                 type=openapi.TYPE_STRING,
                 required=True
             )
@@ -42,11 +42,12 @@ class UserListView(generics.ListAPIView):
                 )
             ),
             401: 'Не авторизован',
-            403: 'Доступ запрещен (требуются права администратора)'
+            403: 'Доступ запрещен'
         }
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Просмотр, обновление и удаление пользователя"""

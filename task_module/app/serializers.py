@@ -163,10 +163,6 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
                 'allow_blank': True,
                 'max_length': 5000
             },
-            'status': {
-                'required': False,
-                'default': 'unassigned'
-            },
             'priority': {
                 'required': False,
                 'default': 'medium'

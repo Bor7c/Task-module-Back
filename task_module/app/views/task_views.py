@@ -72,7 +72,7 @@ class TaskListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         user = get_user_from_request(self.request)
-        serializer.save(created_by=user, status='unassigned')
+        serializer.save(created_by=user)
 
 
 class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):

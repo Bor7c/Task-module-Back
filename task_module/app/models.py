@@ -148,6 +148,10 @@ class Comment(models.Model):
         default=False,
         verbose_name='Удалено'
     )
+    is_modified = models.BooleanField(
+        default=False,
+        verbose_name='Редактировался'
+    )
 
     class Meta:
         verbose_name = 'Комментарий'

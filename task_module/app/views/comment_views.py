@@ -17,7 +17,7 @@ class CommentListCreateView(generics.ListCreateAPIView):
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [IsAuthenticated]
     serializer_class = CommentSerializer
-
+    
     def get_session_user(self):
         """Получаем пользователя из сессии (из кук или заголовков)"""
         session_id = self.request.COOKIES.get('session_token') or self.request.headers.get('X-Session-ID')
@@ -27,7 +27,7 @@ class CommentListCreateView(generics.ListCreateAPIView):
             raise PermissionDenied("Сессия недействительна или истекла")
         logger.debug(f"Authenticated user: {user.username} (ID: {user.id})")
         return user
-
+    
     def get_queryset(self):
         task_id = self.kwargs['task_id']
         logger.debug(f"Getting comments for task ID: {task_id}")
@@ -35,10 +35,10 @@ class CommentListCreateView(generics.ListCreateAPIView):
             task_id=task_id, 
             is_deleted=False
         ).select_related('author', 'task')
-
+    
     def get_authenticate_header(self, request):
         return 'X-Session-ID'
-
+    
     @swagger_auto_schema(
         operation_description="Получить все комментарии к задаче",
         manual_parameters=[
@@ -76,7 +76,7 @@ class CommentListCreateView(generics.ListCreateAPIView):
         response = super().get(request, *args, **kwargs)
         logger.debug(f"Returning {len(response.data)} comments")
         return response
-
+    
     @swagger_auto_schema(
         operation_description="Создать новый комментарий к задаче",
         request_body=openapi.Schema(
@@ -136,17 +136,20 @@ class CommentListCreateView(generics.ListCreateAPIView):
             raise NotFound("Задача не найдена")
         
         try:
+            # При создании is_modified явно устанавливаем в False
             comment = Comment.objects.create(
                 text=text,
                 task=task,
-                author=user
+                author=user,
+                is_modified=False  # Явно указываем, что комментарий не модифицирован
             )
             logger.info(
                 f"Comment created successfully\n"
                 f"Comment ID: {comment.id}\n"
                 f"Task: {task.title} (ID: {task.id})\n"
                 f"Author: {user.username} (ID: {user.id})\n"
-                f"Text length: {len(text)} characters"
+                f"Text length: {len(text)} characters\n"
+                f"Is modified: {comment.is_modified}"
             )
             
             serializer = self.get_serializer(comment)
@@ -165,18 +168,17 @@ class CommentListCreateView(generics.ListCreateAPIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
 class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [IsAuthenticated]
     serializer_class = CommentSerializer
     lookup_field = 'id'
     lookup_url_kwarg = 'pk'
-
+    
     def get_queryset(self):
         logger.debug(f"Getting comment with ID: {self.kwargs.get('pk')}")
         return Comment.objects.filter(is_deleted=False).select_related('author', 'task')
-
+    
     def get_session_user(self):
         session_id = self.request.COOKIES.get('session_token') or self.request.headers.get('X-Session-ID')
         user = get_session_user(session_id)
@@ -185,7 +187,7 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
             raise PermissionDenied("Сессия недействительна или истекла")
         logger.debug(f"Authenticated user: {user.username} (ID: {user.id})")
         return user
-
+    
     def get_object(self):
         try:
             comment = super().get_object()
@@ -212,7 +214,7 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
         except Exception as e:
             logger.error(f"Error getting comment: {str(e)}")
             raise
-
+    
     @swagger_auto_schema(
         operation_description="Обновить комментарий",
         request_body=openapi.Schema(
@@ -265,8 +267,17 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
             
         try:
             old_text = comment.text
-            comment.text = text
-            comment.save()
+            # Если текст изменился, устанавливаем is_modified в True
+            if old_text != text:
+                comment.text = text
+                comment.is_modified = True  # Явно указываем, что комментарий модифицирован
+                comment.save(update_fields=['text', 'is_modified', 'updated_at'])
+                logger.info(
+                    f"Comment text changed and marked as modified\n"
+                    f"Comment ID: {comment.id}\n"
+                    f"Is modified: {comment.is_modified}"
+                )
+            
             comment.refresh_from_db()
             
             logger.info(
@@ -274,7 +285,8 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
                 f"Comment ID: {comment.id}\n"
                 f"Old text: '{old_text}'\n"
                 f"New text: '{comment.text}'\n"
-                f"Updated at: {comment.updated_at}"
+                f"Updated at: {comment.updated_at}\n"
+                f"Is modified: {comment.is_modified}"
             )
             
             serializer = self.get_serializer(comment)
@@ -290,7 +302,6 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
                 {"error": "Не удалось обновить комментарий"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 
     @swagger_auto_schema(
         operation_description="Частично обновить комментарий",
@@ -347,29 +358,27 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
             )
         
         try:
-            # Используем прямое обновление через QuerySet для гарантии сохранения
-            updated = Comment.objects.filter(id=comment.id).update(
-                text=text,
-                updated_at=timezone.now()
-            )
-            
-            if not updated:
-                logger.error(f"No rows were updated for comment ID: {comment.id}")
-                return Response(
-                    {"error": "Комментарий не был обновлен"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            # Проверяем, изменился ли текст
+            if comment.text != text:
+                # Вместо прямого обновления через QuerySet используем объект комментария
+                comment.text = text
+                comment.is_modified = True  # Устанавливаем флаг модификации
+                comment.updated_at = timezone.now()
+                comment.save(update_fields=['text', 'is_modified', 'updated_at'])
+                
+                logger.info(
+                    f"Comment updated successfully\n"
+                    f"Comment ID: {comment.id}\n"
+                    f"New text: '{comment.text}'\n"
+                    f"Updated at: {comment.updated_at}\n"
+                    f"Is modified: {comment.is_modified}"
                 )
+            else:
+                logger.info(f"Text not changed for comment ID: {comment.id}")
             
-            # Получаем обновленный комментарий
-            updated_comment = Comment.objects.get(id=comment.id)
-            logger.info(
-                f"Comment updated successfully (rows affected: {updated})\n"
-                f"Comment ID: {updated_comment.id}\n"
-                f"New text: '{updated_comment.text}'\n"
-                f"Updated at: {updated_comment.updated_at}"
-            )
-            
-            serializer = self.get_serializer(updated_comment)
+            # Получаем свежие данные комментария
+            comment.refresh_from_db()
+            serializer = self.get_serializer(comment)
             return Response(serializer.data)
             
         except Exception as e:
@@ -383,7 +392,7 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
                 {"error": "Не удалось обновить комментарий"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
+    
     @swagger_auto_schema(
         operation_description="Удалить комментарий (мягкое удаление)",
         manual_parameters=[
@@ -402,7 +411,6 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
             404: 'Комментарий не найден'
         }
     )
-
     def delete(self, request, *args, **kwargs):
         comment = self.get_object()
         user = self.get_session_user()
@@ -410,16 +418,17 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
         logger.info(f"Attempt to delete comment ID: {comment.id}")
         
         try:
-            # Явное обновление через QuerySet
+            # Мягкое удаление с использованием update, но с флагом is_modified
             updated = Comment.objects.filter(id=comment.id).update(
                 is_deleted=True,
                 updated_at=timezone.now()
+                # Не меняем is_modified, так как это не редактирование текста
             )
             
             if not updated:
                 logger.error(f"No rows updated for comment ID: {comment.id}")
                 return Response(
-                    {"error": "Не удалось обновить комментарий"},
+                    {"error": "Не удалось удалить комментарий"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             

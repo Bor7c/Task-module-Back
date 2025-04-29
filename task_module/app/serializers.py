@@ -84,7 +84,7 @@ class CommentSerializer(serializers.ModelSerializer):
         }
 
     def get_is_modified(self, obj):
-        return obj.updated_at > obj.created_at
+        return obj.is_modified
 
 
 class TaskListSerializer(serializers.ModelSerializer):

@@ -4,7 +4,6 @@ from django.utils import timezone
 
 class UserBasicSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)
-
     class Meta:
         model = User
         fields = [
@@ -16,7 +15,6 @@ class UserBasicSerializer(serializers.ModelSerializer):
             'is_staff',
         ]
         read_only_fields = fields
-
 
 class UserCreateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -38,23 +36,19 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 'allow_blank': False
             }
         }
-
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("Пользователь с таким email уже существует")
         return value.lower()
-
     def create(self, validated_data):
         return User.objects.create_user(
             **validated_data,
             is_active=True
         )
 
-
 class CommentSerializer(serializers.ModelSerializer):
     author = UserBasicSerializer(read_only=True)
     is_modified = serializers.SerializerMethodField()
-
     class Meta:
         model = Comment
         fields = [
@@ -82,17 +76,16 @@ class CommentSerializer(serializers.ModelSerializer):
                 }
             }
         }
-
     def get_is_modified(self, obj):
         return obj.is_modified
-
 
 class TaskListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
     responsible = UserBasicSerializer(read_only=True)
     comments_count = serializers.SerializerMethodField()
-
+    is_overdue = serializers.BooleanField(read_only=True)
+    
     class Meta:
         model = Task
         fields = [
@@ -106,19 +99,19 @@ class TaskListSerializer(serializers.ModelSerializer):
             'deadline',
             'created_at',
             'updated_at',
-            'comments_count'
+            'comments_count',
+            'is_overdue'
         ]
         read_only_fields = fields
-
+    
     def get_comments_count(self, obj):
         return obj.comments.filter(is_deleted=False).count()
-
 
 class TaskDetailSerializer(TaskListSerializer):
     created_by = UserBasicSerializer(read_only=True)
     comments = CommentSerializer(many=True, read_only=True)
     is_closed = serializers.SerializerMethodField()
-
+    
     class Meta(TaskListSerializer.Meta):
         fields = TaskListSerializer.Meta.fields + [
             'description',
@@ -127,10 +120,9 @@ class TaskDetailSerializer(TaskListSerializer):
             'comments',
             'is_closed'
         ]
-
+    
     def get_is_closed(self, obj):
         return obj.status == 'closed'
-
 
 class TaskCreateUpdateSerializer(serializers.ModelSerializer):
     responsible_id = serializers.PrimaryKeyRelatedField(
@@ -141,7 +133,8 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     responsible = UserBasicSerializer(read_only=True)
-
+    is_overdue = serializers.BooleanField(read_only=True)
+    
     class Meta:
         model = Task
         fields = [
@@ -151,7 +144,8 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
             'priority',
             'responsible_id',  # для записи
             'responsible',     # для чтения
-            'deadline'
+            'deadline',
+            'is_overdue'
         ]
         extra_kwargs = {
             'title': {
@@ -168,24 +162,20 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
                 'default': 'medium'
             }
         }
-
+    
     def validate_status(self, value):
         if value == 'closed' and not self.instance:
             raise serializers.ValidationError("Невозможно создать задачу со статусом 'closed'")
         return value
-
+    
     def validate(self, data):
         if data.get('status') == 'closed':
-            if not data.get('description'):
-                raise serializers.ValidationError(
-                    {"description": "Требуется описание перед закрытием задачи"}
-                )
             if not self.instance or not self.instance.closed_at:
                 data['closed_at'] = timezone.now()
         elif self.instance and self.instance.closed_at and data.get('status') != 'closed':
             data['closed_at'] = None
         return data
-
+    
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
         return super().create(validated_data)

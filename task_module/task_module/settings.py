@@ -303,3 +303,22 @@ LOGGING = {
         },
     },
 }
+
+
+
+#minio
+
+INSTALLED_APPS += ['storages']
+
+DEFAULT_FILE_STORAGE = 'your_project.storage_backends.MediaStorage'
+
+AWS_ACCESS_KEY_ID = os.getenv('MINIO_ACCESS_KEY', 'minioadmin')
+AWS_SECRET_ACCESS_KEY = os.getenv('MINIO_SECRET_KEY', 'minioadmin')
+AWS_STORAGE_BUCKET_NAME = 'media'
+AWS_S3_ENDPOINT_URL = os.getenv('MINIO_ENDPOINT', 'http://minio:9000')
+
+AWS_S3_FILE_OVERWRITE = False
+AWS_S3_ADDRESSING_STYLE = "path"
+AWS_DEFAULT_ACL = None
+
+MEDIA_URL = f"{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/"

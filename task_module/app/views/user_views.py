@@ -1,62 +1,41 @@
-from rest_framework import generics, permissions, status
+import imghdr
+
+from rest_framework import generics, permissions, status, views
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from django.core.files.uploadedfile import InMemoryUploadedFile
+
 from ..models import User
 from ..serializers import UserBasicSerializer, UserCreateSerializer
 from app.utils.auth import RedisSessionAuthentication, get_session_user
 
+
 class UserListView(generics.ListAPIView):
-    """Получение списка пользователей (для всех авторизованных)"""
     authentication_classes = [RedisSessionAuthentication]
-    permission_classes = [permissions.IsAuthenticated]  # <--- изменено тут
+    permission_classes = [permissions.IsAuthenticated]
     queryset = User.objects.all()
     serializer_class = UserBasicSerializer
 
     @swagger_auto_schema(
         operation_description="Получить список всех пользователей",
         manual_parameters=[
-            openapi.Parameter(
-                'X-Session-ID',
-                openapi.IN_HEADER,
-                description="Идентификатор сессии",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
+            openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
+                              description="Идентификатор сессии",
+                              type=openapi.TYPE_STRING, required=True)
         ],
-        responses={
-            200: openapi.Response(
-                'Success',
-                openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                            'username': openapi.Schema(type=openapi.TYPE_STRING),
-                            'email': openapi.Schema(type=openapi.TYPE_STRING),
-                            'role': openapi.Schema(type=openapi.TYPE_STRING),
-                            'role_display': openapi.Schema(type=openapi.TYPE_STRING),
-                        }
-                    )
-                )
-            ),
-            401: 'Не авторизован',
-            403: 'Доступ запрещен'
-        }
+        responses={200: UserBasicSerializer(many=True)}
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """Просмотр, обновление и удаление пользователя"""
     authentication_classes = [RedisSessionAuthentication]
     queryset = User.objects.all()
-    
+
     def get_serializer_class(self):
-        if self.request.method in ['PUT', 'PATCH']:
-            return UserBasicSerializer
         return UserBasicSerializer
 
     def get_permissions(self):
@@ -67,102 +46,37 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     @swagger_auto_schema(
         operation_description="Получить информацию о пользователе",
         manual_parameters=[
-            openapi.Parameter(
-                'X-Session-ID',
-                openapi.IN_HEADER,
-                description="Идентификатор сессии",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
+            openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
+                              description="Идентификатор сессии",
+                              type=openapi.TYPE_STRING, required=True)
         ],
-        responses={
-            200: openapi.Response(
-                'Success',
-                openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                        'username': openapi.Schema(type=openapi.TYPE_STRING),
-                        'email': openapi.Schema(type=openapi.TYPE_STRING),
-                        'role': openapi.Schema(type=openapi.TYPE_STRING),
-                        'role_display': openapi.Schema(type=openapi.TYPE_STRING),
-                    }
-                )
-            ),
-            401: 'Не авторизован',
-            403: 'Доступ запрещен',
-            404: 'Пользователь не найден'
-        }
+        responses={200: UserBasicSerializer()}
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_description="Обновить данные пользователя (только админ)",
-        manual_parameters=[
-            openapi.Parameter(
-                'X-Session-ID',
-                openapi.IN_HEADER,
-                description="Идентификатор сессии администратора",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
-        ],
         request_body=UserBasicSerializer,
-        responses={
-            200: openapi.Response(
-                'Success',
-                openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                        'username': openapi.Schema(type=openapi.TYPE_STRING),
-                        'email': openapi.Schema(type=openapi.TYPE_STRING),
-                        'role': openapi.Schema(type=openapi.TYPE_STRING),
-                        'role_display': openapi.Schema(type=openapi.TYPE_STRING),
-                    }
-                )
-            ),
-            400: 'Неверные данные',
-            401: 'Не авторизован',
-            403: 'Доступ запрещен',
-            404: 'Пользователь не найден'
-        }
+        manual_parameters=[
+            openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
+                              description="Сессия администратора",
+                              type=openapi.TYPE_STRING, required=True)
+        ],
+        responses={200: UserBasicSerializer()}
     )
     def put(self, request, *args, **kwargs):
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_description="Частичное обновление пользователя (только админ)",
-        manual_parameters=[
-            openapi.Parameter(
-                'X-Session-ID',
-                openapi.IN_HEADER,
-                description="Идентификатор сессии администратора",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
-        ],
         request_body=UserBasicSerializer,
-        responses={
-            200: openapi.Response(
-                'Success',
-                openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                        'username': openapi.Schema(type=openapi.TYPE_STRING),
-                        'email': openapi.Schema(type=openapi.TYPE_STRING),
-                        'role': openapi.Schema(type=openapi.TYPE_STRING),
-                        'role_display': openapi.Schema(type=openapi.TYPE_STRING),
-                    }
-                )
-            ),
-            400: 'Неверные данные',
-            401: 'Не авторизован',
-            403: 'Доступ запрещен',
-            404: 'Пользователь не найден'
-        }
+        manual_parameters=[
+            openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
+                              description="Сессия администратора",
+                              type=openapi.TYPE_STRING, required=True)
+        ],
+        responses={200: UserBasicSerializer()}
     )
     def patch(self, request, *args, **kwargs):
         return super().patch(request, *args, **kwargs)
@@ -170,26 +84,17 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     @swagger_auto_schema(
         operation_description="Удалить пользователя (только админ)",
         manual_parameters=[
-            openapi.Parameter(
-                'X-Session-ID',
-                openapi.IN_HEADER,
-                description="Идентификатор сессии администратора",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
+            openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
+                              description="Сессия администратора",
+                              type=openapi.TYPE_STRING, required=True)
         ],
-        responses={
-            204: 'Пользователь удален',
-            401: 'Не авторизован',
-            403: 'Доступ запрещен',
-            404: 'Пользователь не найден'
-        }
+        responses={204: 'Пользователь удалён'}
     )
     def delete(self, request, *args, **kwargs):
         return super().delete(request, *args, **kwargs)
 
+
 class UserCreateView(generics.CreateAPIView):
-    """Регистрация нового пользователя"""
     queryset = User.objects.all()
     serializer_class = UserCreateSerializer
     permission_classes = [permissions.AllowAny]
@@ -197,25 +102,94 @@ class UserCreateView(generics.CreateAPIView):
     @swagger_auto_schema(
         operation_description="Регистрация нового пользователя",
         request_body=UserCreateSerializer,
-        responses={
-            201: openapi.Response(
-                "Пользователь создан",
-                openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                        'username': openapi.Schema(type=openapi.TYPE_STRING),
-                        'email': openapi.Schema(type=openapi.TYPE_STRING),
-                    }
-                )
-            ),
-            400: openapi.Response("Неверные данные")
-        }
+        responses={201: UserCreateSerializer()}
     )
     def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == status.HTTP_201_CREATED:
-            # Дополнительные действия после создания пользователя
-            user = User.objects.get(id=response.data['id'])
-            # Можно отправить email подтверждения и т.д.
-        return response
+        return super().post(request, *args, **kwargs)
+
+
+class UserProfilePictureUploadView(views.APIView):
+    """Загрузка изображения профиля"""
+    authentication_classes = [RedisSessionAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser]
+
+    @swagger_auto_schema(
+        operation_description="Загрузить фото профиля пользователя (только изображение)",
+        manual_parameters=[
+            openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
+                              description="Сессия", type=openapi.TYPE_STRING, required=True)
+        ],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'profile_picture': openapi.Schema(type=openapi.TYPE_FILE)
+            },
+            required=['profile_picture']
+        ),
+        responses={
+            200: openapi.Response("Успешно", schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'profile_picture_url': openapi.Schema(type=openapi.TYPE_STRING)
+                }
+            )),
+            400: 'Неверный формат файла'
+        }
+    )
+    def post(self, request):
+        user = request.user
+        uploaded_file = request.FILES.get('profile_picture')
+
+        if not uploaded_file:
+            return Response({'detail': 'Файл не предоставлен'}, status=400)
+
+        # Проверка, что это изображение
+        if isinstance(uploaded_file, InMemoryUploadedFile):
+            file_type = imghdr.what(uploaded_file)
+        else:
+            file_type = None
+
+        if file_type not in ['jpeg', 'png', 'gif', 'bmp', 'webp']:
+            return Response({'detail': 'Недопустимый формат изображения'}, status=400)
+
+        user.profile_picture = uploaded_file
+        user.save(update_fields=['profile_picture'])
+
+        return Response({
+            'profile_picture_url': user.profile_picture.url
+        }, status=200)
+
+
+class UserProfilePictureDeleteView(views.APIView):
+    """Удаление аватарки пользователя (сброс на null)"""
+    authentication_classes = [RedisSessionAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Удалить фото профиля пользователя",
+        manual_parameters=[
+            openapi.Parameter(
+                'X-Session-ID',
+                openapi.IN_HEADER,
+                description="ID сессии пользователя",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ],
+        responses={
+            204: "Фото удалено",
+            401: "Не авторизован",
+            404: "Пользователь не найден"
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        user = get_session_user(request)
+        if not user:
+            return Response({"detail": "Пользователь не найден"}, status=status.HTTP_404_NOT_FOUND)
+
+        user.profile_picture.delete(save=False)  # удалит сам файл
+        user.profile_picture = None
+        user.save(update_fields=['profile_picture'])
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

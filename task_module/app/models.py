@@ -19,10 +19,13 @@ class User(AbstractUser):
         default=True,
         verbose_name='Активный'
     )
+    profile_picture = models.ImageField(upload_to='profiles/', blank=True, null=True, verbose_name='Фото профиля')
+
     class Meta:
         verbose_name = 'Пользователь'
         verbose_name_plural = 'Пользователи'
         ordering = ['username']
+
     def __str__(self):
         return f'{self.username} ({self.get_role_display()})'
 
@@ -34,13 +37,14 @@ class Task(models.Model):
         ('awaiting_response', 'Ожидает ответа'),
         ('awaiting_action', 'Ожидает действий'),
     ]
-    # Приоритеты оставляем без изменений
+    
     PRIORITY_CHOICES = [
         ('low', 'Низкий'),
         ('medium', 'Средний'),
         ('high', 'Высокий'),
         ('critical', 'Критический'),
     ]
+
     title = models.CharField(max_length=255, verbose_name='Название')
     description = models.TextField(blank=True, null=True, verbose_name='Описание')
     status = models.CharField(
@@ -80,7 +84,7 @@ class Task(models.Model):
     deadline = models.DateTimeField(null=True, blank=True, verbose_name='Срок выполнения')
     is_deleted = models.BooleanField(default=False, verbose_name='Удалено')
     is_overdue = models.BooleanField(default=False, verbose_name='Просрочено')
-    
+
     class Meta:
         verbose_name = 'Задача'
         verbose_name_plural = 'Задачи'
@@ -103,41 +107,20 @@ class Task(models.Model):
             elif self.status != 'closed' and original.status == 'closed':
                 self.closed_at = None
         
-        # Обновляем is_assigned в зависимости от наличия responsible
         self.is_assigned = bool(self.responsible)
-        
-        # Проверяем, просрочена ли задача
         self.update_overdue_status()
-        
         super().save(*args, **kwargs)
     
     def update_overdue_status(self):
-        """Обновление статуса просрочено по новой логике"""
         now = timezone.now()
-        
-        # Если дедлайн не установлен, задача не может быть просрочена
-        if not self.deadline:
+        if not self.deadline or self.deadline >= now:
             self.is_overdue = False
-            return
-        
-        # Снимаем флаг просроченности только если дедлайн в будущем
-        if self.deadline >= now:
-            self.is_overdue = False
-            return
-        
-        # Устанавливаем флаг просроченности только для активных задач с прошедшим дедлайном
-        if self.status in ['in_progress', 'awaiting_response', 'awaiting_action'] and self.deadline < now:
+        elif self.status in ['in_progress', 'awaiting_response', 'awaiting_action']:
             self.is_overdue = True
-        
-        # Для закрытых/решенных задач сохраняем текущее значение флага
-        # (если они были просрочены до закрытия, то останутся помеченными)
-        
+
     @classmethod
     def update_all_overdue_statuses(cls):
-        """Обновляет статус просроченности для задач по новой логике"""
         now = timezone.now()
-        
-        # 1. Пометить активные задачи как просроченные, если их дедлайн в прошлом
         active_tasks = cls.objects.filter(
             status__in=['in_progress', 'awaiting_response', 'awaiting_action'],
             is_deleted=False,
@@ -146,9 +129,7 @@ class Task(models.Model):
             is_overdue=False
         )
         overdue_count = active_tasks.update(is_overdue=True)
-        
-        # 2. Снять флаг просроченности ТОЛЬКО если дедлайн перенесен в будущее
-        # (независимо от статуса задачи)
+
         not_overdue_tasks = cls.objects.filter(
             is_deleted=False,
             deadline__isnull=False,
@@ -156,8 +137,7 @@ class Task(models.Model):
             is_overdue=True
         )
         not_overdue_count = not_overdue_tasks.update(is_overdue=False)
-        
-        # 3. Снять флаг просроченности если дедлайн был удален
+
         no_deadline_tasks = cls.objects.filter(
             is_deleted=False,
             deadline__isnull=True,
@@ -168,7 +148,6 @@ class Task(models.Model):
         return overdue_count + not_overdue_count + no_deadline_count
     
     def delete(self, *args, **kwargs):
-        """Мягкое удаление"""
         self.is_deleted = True
         self.save(update_fields=['is_deleted'])
 
@@ -181,33 +160,17 @@ class Comment(models.Model):
     )
     author = models.ForeignKey(
         User,
-        on_delete=models.PROTECT,  # Защита от удаления автора
+        on_delete=models.PROTECT,
         related_name='comments',
         verbose_name='Автор'
     )
-    text = models.TextField(
-        verbose_name='Текст комментария'
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name='Дата создания'
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        verbose_name='Дата обновления'
-    )
-    is_system = models.BooleanField(
-        default=False,
-        verbose_name='Системное сообщение'
-    )
-    is_deleted = models.BooleanField(
-        default=False,
-        verbose_name='Удалено'
-    )
-    is_modified = models.BooleanField(
-        default=False,
-        verbose_name='Редактировался'
-    )
+    text = models.TextField(verbose_name='Текст комментария')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
+    is_system = models.BooleanField(default=False, verbose_name='Системное сообщение')
+    is_deleted = models.BooleanField(default=False, verbose_name='Удалено')
+    is_modified = models.BooleanField(default=False, verbose_name='Редактировался')
+
     class Meta:
         verbose_name = 'Комментарий'
         verbose_name_plural = 'Комментарии'
@@ -216,14 +179,44 @@ class Comment(models.Model):
             models.Index(fields=['task']),
             models.Index(fields=['created_at']),
         ]
+
     def __str__(self):
         return f"Комментарий #{self.id} к задаче {self.task_id}"
+
     def save(self, *args, **kwargs):
-        """Автоматическое обновление updated_at"""
         if self.pk:
             kwargs['update_fields'] = kwargs.get('update_fields', []) + ['updated_at']
         super().save(*args, **kwargs)
+
     def delete(self, *args, **kwargs):
-        """Мягкое удаление"""
         self.is_deleted = True
         self.save(update_fields=['is_deleted', 'updated_at'])
+
+class Attachment(models.Model):
+    file = models.FileField(upload_to='attachments/', verbose_name='Файл')
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата загрузки')
+    
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        null=True,
+        blank=True,
+        verbose_name='Задача'
+    )
+    comment = models.ForeignKey(
+        Comment,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        null=True,
+        blank=True,
+        verbose_name='Комментарий'
+    )
+
+    class Meta:
+        verbose_name = 'Вложение'
+        verbose_name_plural = 'Вложения'
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f'Файл: {self.file.name}'

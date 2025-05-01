@@ -5,7 +5,7 @@ from rest_framework import permissions
 
 from .views.task_views import TaskListCreateView, TaskDetailView, AssignResponsibleView, RemoveResponsibleView, AssignToMeView
 from .views.comment_views import CommentListCreateView, CommentDetailView
-from .views.user_views import UserListView, UserDetailView, UserCreateView
+from .views.user_views import UserListView, UserDetailView, UserCreateView, UserProfilePictureUploadView
 from .views.auth_views import LoginView, RegisterView, LogoutView, SessionCheckView
 
 schema_view = get_schema_view(
@@ -35,6 +35,7 @@ urlpatterns = [
     path('users/', UserListView.as_view(), name='user-list'),
     path('users/create/', UserCreateView.as_view(), name='user-create'),
     path('users/<int:pk>/', UserDetailView.as_view(), name='user-detail'),
+    path('users/profile/upload-picture/', UserProfilePictureUploadView.as_view(), name='user-upload-picture'), 
     
     # Задачи
     path('tasks/', TaskListCreateView.as_view(), name='task-list'),

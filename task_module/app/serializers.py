@@ -4,6 +4,8 @@ from django.utils import timezone
 
 class UserBasicSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)
+    profile_picture_url = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
@@ -13,10 +15,19 @@ class UserBasicSerializer(serializers.ModelSerializer):
             'role',
             'role_display',
             'is_staff',
+            'profile_picture_url'
         ]
         read_only_fields = fields
 
+    def get_profile_picture_url(self, obj):
+        if obj.profile_picture and hasattr(obj.profile_picture, 'url'):
+            return obj.profile_picture.url
+        return None
+
+
 class UserCreateSerializer(serializers.ModelSerializer):
+    profile_picture_url = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = User
         fields = [
@@ -24,7 +35,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'email',
             'password',
             'first_name',
-            'last_name'
+            'last_name',
+            'profile_picture_url'
         ]
         extra_kwargs = {
             'password': {
@@ -36,15 +48,23 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 'allow_blank': False
             }
         }
+
+    def get_profile_picture_url(self, obj):
+        if obj.profile_picture and hasattr(obj.profile_picture, 'url'):
+            return obj.profile_picture.url
+        return None
+
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("Пользователь с таким email уже существует")
         return value.lower()
+
     def create(self, validated_data):
         return User.objects.create_user(
             **validated_data,
             is_active=True
         )
+
 
 class CommentSerializer(serializers.ModelSerializer):
     author = UserBasicSerializer(read_only=True)

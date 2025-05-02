@@ -19,7 +19,7 @@ class User(AbstractUser):
         default=True,
         verbose_name='Активный'
     )
-    profile_picture = models.ImageField(upload_to='profiles/', blank=True, null=True, verbose_name='Фото профиля')
+    profile_picture = models.ImageField(upload_to='media/profiles/', blank=True, null=True, verbose_name='Фото профиля')
 
     class Meta:
         verbose_name = 'Пользователь'
@@ -193,7 +193,7 @@ class Comment(models.Model):
         self.save(update_fields=['is_deleted', 'updated_at'])
 
 class Attachment(models.Model):
-    file = models.FileField(upload_to='attachments/', verbose_name='Файл')
+    file = models.FileField(upload_to='media/attachments/', verbose_name='Файл')
     uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата загрузки')
     
     task = models.ForeignKey(

@@ -1,15 +1,15 @@
-import imghdr
-
 from rest_framework import generics, permissions, status, views
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.core.files.uploadedfile import InMemoryUploadedFile
+# from PIL import Image  # type: ignore
+from io import BytesIO
 
 from ..models import User
 from ..serializers import UserBasicSerializer, UserCreateSerializer
-from app.utils.auth import RedisSessionAuthentication, get_session_user
+from app.utils.auth import RedisSessionAuthentication
 
 
 class UserListView(generics.ListAPIView):
@@ -118,7 +118,9 @@ class UserProfilePictureUploadView(views.APIView):
         operation_description="Загрузить фото профиля пользователя (только изображение)",
         manual_parameters=[
             openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
-                              description="Сессия", type=openapi.TYPE_STRING, required=True)
+                              description="Сессия", type=openapi.TYPE_STRING, required=True),
+            openapi.Parameter('user_id', openapi.IN_QUERY,
+                              description="ID пользователя", type=openapi.TYPE_INTEGER, required=False)
         ],
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -138,21 +140,22 @@ class UserProfilePictureUploadView(views.APIView):
         }
     )
     def post(self, request):
-        user = request.user
+        user_id = request.query_params.get('user_id')
+        user = request.user if not user_id else User.objects.get(pk=user_id)
+
         uploaded_file = request.FILES.get('profile_picture')
 
         if not uploaded_file:
             return Response({'detail': 'Файл не предоставлен'}, status=400)
 
-        # Проверка, что это изображение
-        if isinstance(uploaded_file, InMemoryUploadedFile):
-            file_type = imghdr.what(uploaded_file)
-        else:
-            file_type = None
+        # Проверка, что это изображение с помощью Pillow (закомментировано)
+        # try:
+        #     img = Image.open(uploaded_file)
+        #     img.verify()  # Проверка, что файл является допустимым изображением
+        # except Exception:
+        #     return Response({'detail': 'Недопустимый формат изображения'}, status=400)
 
-        if file_type not in ['jpeg', 'png', 'gif', 'bmp', 'webp']:
-            return Response({'detail': 'Недопустимый формат изображения'}, status=400)
-
+        # Сохранение изображения
         user.profile_picture = uploaded_file
         user.save(update_fields=['profile_picture'])
 
@@ -175,6 +178,13 @@ class UserProfilePictureDeleteView(views.APIView):
                 description="ID сессии пользователя",
                 type=openapi.TYPE_STRING,
                 required=True
+            ),
+            openapi.Parameter(
+                'user_id',
+                openapi.IN_QUERY,
+                description="ID пользователя",
+                type=openapi.TYPE_INTEGER,
+                required=False
             )
         ],
         responses={
@@ -184,11 +194,14 @@ class UserProfilePictureDeleteView(views.APIView):
         }
     )
     def delete(self, request, *args, **kwargs):
-        user = get_session_user(request)
+        user_id = request.query_params.get('user_id')
+        user = request.user if not user_id else User.objects.filter(pk=user_id).first()
+
         if not user:
             return Response({"detail": "Пользователь не найден"}, status=status.HTTP_404_NOT_FOUND)
 
-        user.profile_picture.delete(save=False)  # удалит сам файл
+        if user.profile_picture:
+            user.profile_picture.delete(save=False)  # удаляет файл
         user.profile_picture = None
         user.save(update_fields=['profile_picture'])
 

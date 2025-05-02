@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 import os
 
+
 LOG_DIR = os.path.join(Path(__file__).resolve().parent.parent, 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)  # Создаем директорию, если ее нет
 
@@ -310,15 +311,17 @@ LOGGING = {
 
 INSTALLED_APPS += ['storages']
 
-DEFAULT_FILE_STORAGE = 'your_project.storage_backends.MediaStorage'
+MINIO_URL = 'http://localhost:9000'  # URL вашего MinIO сервера
+MINIO_ACCESS_KEY = 'minioadmin'       # Ваш Access Key
+MINIO_SECRET_KEY = 'minioadmin'       # Ваш Secret Key
+MINIO_BUCKET_NAME = 'media' # Имя вашего бакета
 
-AWS_ACCESS_KEY_ID = os.getenv('MINIO_ACCESS_KEY', 'minioadmin')
-AWS_SECRET_ACCESS_KEY = os.getenv('MINIO_SECRET_KEY', 'minioadmin')
-AWS_STORAGE_BUCKET_NAME = 'media'
-AWS_S3_ENDPOINT_URL = os.getenv('MINIO_ENDPOINT', 'http://minio:9000')
-
-AWS_S3_FILE_OVERWRITE = False
-AWS_S3_ADDRESSING_STYLE = "path"
-AWS_DEFAULT_ACL = None
-
-MEDIA_URL = f"{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/"
+DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+AWS_ACCESS_KEY_ID = MINIO_ACCESS_KEY
+AWS_SECRET_ACCESS_KEY = MINIO_SECRET_KEY
+AWS_S3_ENDPOINT_URL = MINIO_URL
+AWS_S3_BUCKET_NAME = MINIO_BUCKET_NAME
+AWS_S3_CUSTOM_DOMAIN = f'{MINIO_BUCKET_NAME}.{MINIO_URL.split("//")[1]}'
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',
+}

@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from ..models import Task, User
+from ..models import Task, User, Attachment
 from ..serializers import *
 from app.utils.auth import RedisSessionAuthentication, get_session_user
 from rest_framework.exceptions import PermissionDenied
@@ -20,14 +20,7 @@ def get_user_from_request(request):
     return user
 
 def update_overdue_tasks():
-    """Обновляет флаг просрочки для задач по новой логике:
-    1. Активные задачи с дедлайном в прошлом помечаются как просроченные
-    2. Флаг просроченности снимается только если дедлайн изменен или удален
-    3. Задачи сохраняют статус просроченности даже после закрытия/решения
-    """
     now = timezone.now()
-    
-    # 1. Активные задачи с дедлайном в прошлом -> просрочены
     active_tasks = Task.objects.filter(
         status__in=['in_progress', 'awaiting_response', 'awaiting_action'],
         is_deleted=False,
@@ -37,7 +30,6 @@ def update_overdue_tasks():
     )
     overdue_count = active_tasks.update(is_overdue=True)
     
-    # 2. Задачи с дедлайном в будущем -> не просрочены (независимо от статуса)
     not_overdue_tasks = Task.objects.filter(
         is_deleted=False,
         deadline__isnull=False,
@@ -46,7 +38,6 @@ def update_overdue_tasks():
     )
     not_overdue_count = not_overdue_tasks.update(is_overdue=False)
     
-    # 3. Задачи без дедлайна -> не просрочены
     no_deadline_tasks = Task.objects.filter(
         is_deleted=False,
         deadline__isnull=True,
@@ -83,10 +74,7 @@ class TaskListCreateView(generics.ListCreateAPIView):
     )
     def get(self, request, *args, **kwargs):
         get_user_from_request(request)
-        
-        # Обновляем статус просроченных задач
         update_overdue_tasks()
-        
         return super().get(request, *args, **kwargs)
     
     @swagger_auto_schema(
@@ -113,7 +101,6 @@ class TaskListCreateView(generics.ListCreateAPIView):
         user = get_user_from_request(self.request)
         task = serializer.save(created_by=user)
         
-        # Если задача активна и дедлайн в прошлом - помечаем как просроченную
         now = timezone.now()
         if (task.status in ['in_progress', 'awaiting_response', 'awaiting_action'] and 
             task.deadline and task.deadline < now):
@@ -147,20 +134,14 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     )
     def get(self, request, *args, **kwargs):
         get_user_from_request(request)
-        
-        # Получаем задачу
         task = self.get_object()
         now = timezone.now()
-        
-        # Обновляем флаг просрочки по новой логике:
-        
-        # 1. Если задача активна и дедлайн в прошлом - помечаем как просроченную
+
         if (task.status in ['in_progress', 'awaiting_response', 'awaiting_action'] and 
             task.deadline and task.deadline < now and not task.is_overdue):
             task.is_overdue = True
             task.save(update_fields=['is_overdue'])
-        
-        # 2. Если дедлайн в будущем или его нет - снимаем флаг просроченности
+
         elif ((task.deadline and task.deadline >= now) or not task.deadline) and task.is_overdue:
             task.is_overdue = False
             task.save(update_fields=['is_overdue'])
@@ -182,71 +163,21 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     )
     def put(self, request, *args, **kwargs):
         get_user_from_request(request)
-        
-        # Сохраняем оригинальную задачу для сравнения
         original_task = self.get_object()
         original_deadline = original_task.deadline
         
         response = super().put(request, *args, **kwargs)
         
-        # После обновления проверяем статус просрочки
         if response.status_code == 200:
             task = self.get_object()
             now = timezone.now()
-            
-            # Изменился ли дедлайн?
             deadline_changed = original_deadline != task.deadline
             
-            # 1. Если задача активна и дедлайн в прошлом - помечаем как просроченную
             if (task.status in ['in_progress', 'awaiting_response', 'awaiting_action'] and 
                 task.deadline and task.deadline < now and not task.is_overdue):
                 task.is_overdue = True
                 task.save(update_fields=['is_overdue'])
             
-            # 2. Если дедлайн изменился и теперь в будущем или его нет - снимаем флаг просроченности
-            elif deadline_changed and ((task.deadline and task.deadline >= now) or not task.deadline) and task.is_overdue:
-                task.is_overdue = False
-                task.save(update_fields=['is_overdue'])
-        
-        return response
-    
-    @swagger_auto_schema(
-        request_body=TaskCreateUpdateSerializer,
-        manual_parameters=[
-            openapi.Parameter('X-Session-ID', openapi.IN_HEADER, description="Идентификатор сессии", type=openapi.TYPE_STRING, required=True)
-        ],
-        responses={
-            200: openapi.Response('Задача обновлена', TaskDetailSerializer),
-            400: 'Неверные данные',
-            401: 'Не авторизован',
-            403: 'Доступ запрещен',
-            404: 'Задача не найдена'
-        }
-    )
-    def patch(self, request, *args, **kwargs):
-        get_user_from_request(request)
-        
-        # Сохраняем оригинальную задачу для сравнения
-        original_task = self.get_object()
-        original_deadline = original_task.deadline
-        
-        response = super().patch(request, *args, **kwargs)
-        
-        # После обновления проверяем статус просрочки
-        if response.status_code == 200:
-            task = self.get_object()
-            now = timezone.now()
-            
-            # Изменился ли дедлайн?
-            deadline_changed = original_deadline != task.deadline
-            
-            # 1. Если задача активна и дедлайн в прошлом - помечаем как просроченную
-            if (task.status in ['in_progress', 'awaiting_response', 'awaiting_action'] and 
-                task.deadline and task.deadline < now and not task.is_overdue):
-                task.is_overdue = True
-                task.save(update_fields=['is_overdue'])
-            
-            # 2. Если дедлайн изменился и теперь в будущем или его нет - снимаем флаг просроченности
             elif deadline_changed and ((task.deadline and task.deadline >= now) or not task.deadline) and task.is_overdue:
                 task.is_overdue = False
                 task.save(update_fields=['is_overdue'])
@@ -272,6 +203,61 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         task.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+class AttachmentView(APIView):
+    """Работа с вложениями"""
+    authentication_classes = [RedisSessionAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Добавить вложение к задаче",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["file"],
+            properties={
+                "file": openapi.Schema(type=openapi.TYPE_FILE, description="Файл вложения"),
+            },
+        ),
+        manual_parameters=[
+            openapi.Parameter('X-Session-ID', openapi.IN_HEADER, description="Идентификатор сессии", type=openapi.TYPE_STRING, required=True)
+        ],
+        responses={
+            201: openapi.Response('Вложение добавлено', AttachmentSerializer),
+            400: 'Неверные данные',
+            401: 'Не авторизован',
+            403: 'Доступ запрещен',
+            404: 'Задача не найдена'
+        }
+    )
+    def post(self, request, task_id):
+        user = get_user_from_request(request)
+        task = get_object_or_404(Task, pk=task_id, is_deleted=False)
+        
+        file = request.FILES.get('file')
+        if not file:
+            return Response({"error": "Файл не предоставлен"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        attachment = Attachment.objects.create(file=file, task=task)
+        return Response(AttachmentSerializer(attachment).data, status=status.HTTP_201_CREATED)
+
+    @swagger_auto_schema(
+        operation_description="Удалить вложение",
+        manual_parameters=[
+            openapi.Parameter('X-Session-ID', openapi.IN_HEADER, description="Идентификатор сессии", type=openapi.TYPE_STRING, required=True)
+        ],
+        responses={
+            204: 'Вложение удалено',
+            401: 'Не авторизован',
+            403: 'Доступ запрещен',
+            404: 'Вложение не найдено'
+        }
+    )
+    def delete(self, request, task_id, attachment_id):
+        user = get_user_from_request(request)
+        task = get_object_or_404(Task, pk=task_id, is_deleted=False)
+        attachment = get_object_or_404(Attachment, pk=attachment_id, task=task)
+        attachment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 class AssignToMeView(APIView):
     """Назначить себя ответственным за задачу"""
     authentication_classes = [RedisSessionAuthentication]
@@ -283,10 +269,10 @@ class AssignToMeView(APIView):
             openapi.Parameter('X-Session-ID', openapi.IN_HEADER, description="Идентификатор сессии пользователя", type=openapi.TYPE_STRING, required=True),
         ],
         responses={
-            200: openapi.Response('Task successfully updated', TaskDetailSerializer),
-            404: 'Task not found',
-            401: 'Unauthorized',
-            403: 'Forbidden'
+            200: openapi.Response('Задача успешно обновлена', TaskDetailSerializer),
+            404: 'Задача не найдена',
+            401: 'Не авторизован',
+            403: 'Доступ запрещен'
         }
     )
     def post(self, request, task_id):
@@ -294,10 +280,7 @@ class AssignToMeView(APIView):
         task = get_object_or_404(Task, pk=task_id, is_deleted=False)
         task.responsible = user
         
-        # Проверяем просрочена ли задача по новой логике
         now = timezone.now()
-        
-        # Если задача активна и дедлайн в прошлом - помечаем как просроченную
         if (task.status in ['in_progress', 'awaiting_response', 'awaiting_action'] and 
             task.deadline and task.deadline < now and not task.is_overdue):
             task.is_overdue = True
@@ -339,10 +322,7 @@ class AssignResponsibleView(APIView):
         responsible_user = get_object_or_404(User, pk=user_id)
         task.responsible = responsible_user
         
-        # Проверяем просрочена ли задача по новой логике
         now = timezone.now()
-        
-        # Если задача активна и дедлайн в прошлом - помечаем как просроченную
         if (task.status in ['in_progress', 'awaiting_response', 'awaiting_action'] and 
             task.deadline and task.deadline < now and not task.is_overdue):
             task.is_overdue = True
@@ -372,10 +352,7 @@ class RemoveResponsibleView(APIView):
         task = get_object_or_404(Task, pk=pk, is_deleted=False)
         task.responsible = None
         
-        # Проверяем просрочена ли задача по новой логике
         now = timezone.now()
-        
-        # Если задача активна и дедлайн в прошлом - помечаем как просроченную
         if (task.status in ['in_progress', 'awaiting_response', 'awaiting_action'] and 
             task.deadline and task.deadline < now and not task.is_overdue):
             task.is_overdue = True

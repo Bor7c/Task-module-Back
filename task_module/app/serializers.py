@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Task, Comment, User
+from .models import Task, Comment, User, Attachment
 from django.utils import timezone
 
 class UserBasicSerializer(serializers.ModelSerializer):
@@ -66,9 +66,23 @@ class UserCreateSerializer(serializers.ModelSerializer):
         )
 
 
+class AttachmentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Attachment
+        fields = ['id', 'file', 'file_url', 'uploaded_at']
+
+    def get_file_url(self, obj):
+        if obj.file and hasattr(obj.file, 'url'):
+            return obj.file.url
+        return None
+
+
 class CommentSerializer(serializers.ModelSerializer):
     author = UserBasicSerializer(read_only=True)
     is_modified = serializers.SerializerMethodField()
+
     class Meta:
         model = Comment
         fields = [
@@ -80,10 +94,10 @@ class CommentSerializer(serializers.ModelSerializer):
             'updated_at',
             'is_system',
             'is_modified',
-            'is_deleted'
+            'is_deleted',
         ]
         read_only_fields = [
-            'id', 'author', 'created_at', 'updated_at', 'is_system', 'is_modified', 'is_deleted'
+            'id', 'author', 'created_at', 'updated_at', 'is_system', 'is_modified', 'is_deleted', 'attachments'
         ]
         extra_kwargs = {
             'text': {
@@ -96,8 +110,10 @@ class CommentSerializer(serializers.ModelSerializer):
                 }
             }
         }
+
     def get_is_modified(self, obj):
         return obj.is_modified
+
 
 class TaskListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -105,7 +121,7 @@ class TaskListSerializer(serializers.ModelSerializer):
     responsible = UserBasicSerializer(read_only=True)
     comments_count = serializers.SerializerMethodField()
     is_overdue = serializers.BooleanField(read_only=True)
-    
+
     class Meta:
         model = Task
         fields = [
@@ -123,26 +139,30 @@ class TaskListSerializer(serializers.ModelSerializer):
             'is_overdue'
         ]
         read_only_fields = fields
-    
+
     def get_comments_count(self, obj):
         return obj.comments.filter(is_deleted=False).count()
+
 
 class TaskDetailSerializer(TaskListSerializer):
     created_by = UserBasicSerializer(read_only=True)
     comments = CommentSerializer(many=True, read_only=True)
+    attachments = AttachmentSerializer(many=True, read_only=True)
     is_closed = serializers.SerializerMethodField()
-    
+
     class Meta(TaskListSerializer.Meta):
         fields = TaskListSerializer.Meta.fields + [
             'description',
             'created_by',
             'closed_at',
             'comments',
-            'is_closed'
+            'is_closed',
+            'attachments'
         ]
-    
+
     def get_is_closed(self, obj):
         return obj.status == 'closed'
+
 
 class TaskCreateUpdateSerializer(serializers.ModelSerializer):
     responsible_id = serializers.PrimaryKeyRelatedField(
@@ -153,8 +173,9 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     responsible = UserBasicSerializer(read_only=True)
+    attachments = AttachmentSerializer(many=True, read_only=True)
     is_overdue = serializers.BooleanField(read_only=True)
-    
+
     class Meta:
         model = Task
         fields = [
@@ -165,7 +186,8 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
             'responsible_id',  # для записи
             'responsible',     # для чтения
             'deadline',
-            'is_overdue'
+            'is_overdue',
+            'attachments'
         ]
         extra_kwargs = {
             'title': {
@@ -182,12 +204,12 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
                 'default': 'medium'
             }
         }
-    
+
     def validate_status(self, value):
         if value == 'closed' and not self.instance:
             raise serializers.ValidationError("Невозможно создать задачу со статусом 'closed'")
         return value
-    
+
     def validate(self, data):
         if data.get('status') == 'closed':
             if not self.instance or not self.instance.closed_at:
@@ -195,7 +217,8 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
         elif self.instance and self.instance.closed_at and data.get('status') != 'closed':
             data['closed_at'] = None
         return data
-    
+
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
         return super().create(validated_data)
+

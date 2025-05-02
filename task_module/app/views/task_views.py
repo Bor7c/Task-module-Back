@@ -212,16 +212,16 @@ class AttachmentView(APIView):
         operation_description="Добавить вложение к задаче",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=["file"],
+            required=["files"],
             properties={
-                "file": openapi.Schema(type=openapi.TYPE_FILE, description="Файл вложения"),
+                "files": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(type=openapi.TYPE_FILE), description="Файлы вложения"),
             },
         ),
         manual_parameters=[
             openapi.Parameter('X-Session-ID', openapi.IN_HEADER, description="Идентификатор сессии", type=openapi.TYPE_STRING, required=True)
         ],
         responses={
-            201: openapi.Response('Вложение добавлено', AttachmentSerializer),
+            201: openapi.Response('Вложение добавлено', AttachmentSerializer(many=True)),
             400: 'Неверные данные',
             401: 'Не авторизован',
             403: 'Доступ запрещен',
@@ -232,31 +232,17 @@ class AttachmentView(APIView):
         user = get_user_from_request(request)
         task = get_object_or_404(Task, pk=task_id, is_deleted=False)
         
-        file = request.FILES.get('file')
-        if not file:
-            return Response({"error": "Файл не предоставлен"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        attachment = Attachment.objects.create(file=file, task=task)
-        return Response(AttachmentSerializer(attachment).data, status=status.HTTP_201_CREATED)
+        files = request.FILES.getlist('files')  # Получаем список файлов
+        if not files:
+            return Response({"error": "Файлы не предоставлены"}, status=status.HTTP_400_BAD_REQUEST)
 
-    @swagger_auto_schema(
-        operation_description="Удалить вложение",
-        manual_parameters=[
-            openapi.Parameter('X-Session-ID', openapi.IN_HEADER, description="Идентификатор сессии", type=openapi.TYPE_STRING, required=True)
-        ],
-        responses={
-            204: 'Вложение удалено',
-            401: 'Не авторизован',
-            403: 'Доступ запрещен',
-            404: 'Вложение не найдено'
-        }
-    )
-    def delete(self, request, task_id, attachment_id):
-        user = get_user_from_request(request)
-        task = get_object_or_404(Task, pk=task_id, is_deleted=False)
-        attachment = get_object_or_404(Attachment, pk=attachment_id, task=task)
-        attachment.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        attachments = []
+        for file in files:
+            attachment = Attachment.objects.create(file=file, task=task)
+            attachments.append(attachment)
+
+        return Response(AttachmentSerializer(attachments, many=True).data, status=status.HTTP_201_CREATED)
+
 
 class AssignToMeView(APIView):
     """Назначить себя ответственным за задачу"""

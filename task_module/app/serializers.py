@@ -21,7 +21,7 @@ class UserBasicSerializer(serializers.ModelSerializer):
 
     def get_profile_picture_url(self, obj):
         if obj.profile_picture and hasattr(obj.profile_picture, 'url'):
-            return obj.profile_picture.url
+            return obj.profile_picture.url  # Возвращаем URL для изображения профиля
         return None
 
 
@@ -51,7 +51,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def get_profile_picture_url(self, obj):
         if obj.profile_picture and hasattr(obj.profile_picture, 'url'):
-            return obj.profile_picture.url
+            return obj.profile_picture.url  # Возвращаем URL для изображения профиля
         return None
 
     def validate_email(self, value):
@@ -75,7 +75,7 @@ class AttachmentSerializer(serializers.ModelSerializer):
 
     def get_file_url(self, obj):
         if obj.file and hasattr(obj.file, 'url'):
-            return obj.file.url
+            return obj.file.url  # Возвращаем URL для вложения
         return None
 
 
@@ -97,7 +97,7 @@ class CommentSerializer(serializers.ModelSerializer):
             'is_deleted',
         ]
         read_only_fields = [
-            'id', 'author', 'created_at', 'updated_at', 'is_system', 'is_modified', 'is_deleted', 'attachments'
+            'id', 'author', 'created_at', 'updated_at', 'is_system', 'is_modified', 'is_deleted'
         ]
         extra_kwargs = {
             'text': {
@@ -221,4 +221,3 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
         return super().create(validated_data)
-

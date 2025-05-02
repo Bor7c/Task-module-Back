@@ -4,7 +4,7 @@ from rest_framework.parsers import MultiPartParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.core.files.uploadedfile import InMemoryUploadedFile
-# from PIL import Image  # type: ignore
+from PIL import Image  # type: ignore
 from io import BytesIO
 
 from ..models import User
@@ -148,12 +148,12 @@ class UserProfilePictureUploadView(views.APIView):
         if not uploaded_file:
             return Response({'detail': 'Файл не предоставлен'}, status=400)
 
-        # Проверка, что это изображение с помощью Pillow (закомментировано)
-        # try:
-        #     img = Image.open(uploaded_file)
-        #     img.verify()  # Проверка, что файл является допустимым изображением
-        # except Exception:
-        #     return Response({'detail': 'Недопустимый формат изображения'}, status=400)
+        #Проверка, что это изображение с помощью Pillow (закомментировано)
+        try:
+            img = Image.open(uploaded_file)
+            img.verify()  # Проверка, что файл является допустимым изображением
+        except Exception:
+            return Response({'detail': 'Недопустимый формат изображения'}, status=400)
 
         # Сохранение изображения
         user.profile_picture = uploaded_file

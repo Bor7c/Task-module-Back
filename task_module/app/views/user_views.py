@@ -1,14 +1,16 @@
 from rest_framework import generics, permissions, status, views
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from django.core.files.uploadedfile import InMemoryUploadedFile
-from PIL import Image  # type: ignore
-from io import BytesIO
-from rest_framework.parsers import MultiPartParser, FormParser
-
+from django.core.exceptions import PermissionDenied
+from PIL import Image
 from ..models import User
-from ..serializers import UserBasicSerializer, UserCreateSerializer, UserUpdateSerializer
+from ..serializers import (
+    UserBasicSerializer,
+    UserCreateSerializer,
+    UserUpdateSerializer,
+)
 from app.utils.auth import RedisSessionAuthentication
 
 
@@ -31,11 +33,10 @@ class UserListView(generics.ListAPIView):
         return super().get(request, *args, **kwargs)
 
 
-
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [RedisSessionAuthentication]
     queryset = User.objects.all()
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [JSONParser]  # только JSON
 
     def get_permissions(self):
         if self.request.method == 'DELETE':
@@ -56,46 +57,26 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         return obj
 
     @swagger_auto_schema(
-        operation_description="Обновить данные пользователя",
+        operation_description="Обновить данные пользователя (без картинки)",
         manual_parameters=[
             openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
                               description="Идентификатор сессии",
                               type=openapi.TYPE_STRING, required=True)
         ],
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'first_name': openapi.Schema(type=openapi.TYPE_STRING),
-                'last_name': openapi.Schema(type=openapi.TYPE_STRING),
-                'middle_name': openapi.Schema(type=openapi.TYPE_STRING),
-                'email': openapi.Schema(type=openapi.TYPE_STRING, format='email'),
-                'profile_picture': openapi.Schema(type=openapi.TYPE_FILE)
-            },
-            required=[]
-        ),
+        request_body=UserUpdateSerializer,
         responses={200: UserBasicSerializer()}
     )
     def put(self, request, *args, **kwargs):
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Частичное обновление пользователя",
+        operation_description="Частичное обновление пользователя (без картинки)",
         manual_parameters=[
             openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
                               description="Идентификатор сессии",
                               type=openapi.TYPE_STRING, required=True)
         ],
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'first_name': openapi.Schema(type=openapi.TYPE_STRING),
-                'last_name': openapi.Schema(type=openapi.TYPE_STRING),
-                'middle_name': openapi.Schema(type=openapi.TYPE_STRING),
-                'email': openapi.Schema(type=openapi.TYPE_STRING, format='email'),
-                'profile_picture': openapi.Schema(type=openapi.TYPE_FILE)
-            },
-            required=[]
-        ),
+        request_body=UserUpdateSerializer,
         responses={200: UserBasicSerializer()}
     )
     def patch(self, request, *args, **kwargs):
@@ -117,13 +98,12 @@ class UserCreateView(generics.CreateAPIView):
 
 
 class UserProfilePictureUploadView(views.APIView):
-    """Загрузка изображения профиля"""
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser]
 
     @swagger_auto_schema(
-        operation_description="Загрузить фото профиля пользователя (только изображение)",
+        operation_description="Загрузить фото профиля пользователя",
         manual_parameters=[
             openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
                               description="Сессия", type=openapi.TYPE_STRING, required=True),
@@ -132,17 +112,13 @@ class UserProfilePictureUploadView(views.APIView):
         ],
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            properties={
-                'profile_picture': openapi.Schema(type=openapi.TYPE_FILE)
-            },
+            properties={'profile_picture': openapi.Schema(type=openapi.TYPE_FILE)},
             required=['profile_picture']
         ),
         responses={
             200: openapi.Response("Успешно", schema=openapi.Schema(
                 type=openapi.TYPE_OBJECT,
-                properties={
-                    'profile_picture_url': openapi.Schema(type=openapi.TYPE_STRING)
-                }
+                properties={'profile_picture_url': openapi.Schema(type=openapi.TYPE_STRING)}
             )),
             400: 'Неверный формат файла'
         }
@@ -152,18 +128,15 @@ class UserProfilePictureUploadView(views.APIView):
         user = request.user if not user_id else User.objects.get(pk=user_id)
 
         uploaded_file = request.FILES.get('profile_picture')
-
         if not uploaded_file:
             return Response({'detail': 'Файл не предоставлен'}, status=400)
 
-        #Проверка, что это изображение с помощью Pillow (закомментировано)
         try:
             img = Image.open(uploaded_file)
-            img.verify()  # Проверка, что файл является допустимым изображением
+            img.verify()
         except Exception:
             return Response({'detail': 'Недопустимый формат изображения'}, status=400)
 
-        # Сохранение изображения
         user.profile_picture = uploaded_file
         user.save(update_fields=['profile_picture'])
 
@@ -173,7 +146,6 @@ class UserProfilePictureUploadView(views.APIView):
 
 
 class UserProfilePictureDeleteView(views.APIView):
-    """Удаление аватарки пользователя (сброс на null)"""
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
@@ -209,7 +181,7 @@ class UserProfilePictureDeleteView(views.APIView):
             return Response({"detail": "Пользователь не найден"}, status=status.HTTP_404_NOT_FOUND)
 
         if user.profile_picture:
-            user.profile_picture.delete(save=False)  # удаляет файл
+            user.profile_picture.delete(save=False)
         user.profile_picture = None
         user.save(update_fields=['profile_picture'])
 

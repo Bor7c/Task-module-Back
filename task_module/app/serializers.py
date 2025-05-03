@@ -5,6 +5,7 @@ from django.utils import timezone
 class UserBasicSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)
     profile_picture_url = serializers.SerializerMethodField()
+    full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -12,21 +13,35 @@ class UserBasicSerializer(serializers.ModelSerializer):
             'id',
             'username',
             'email',
+            'first_name',
+            'last_name',
+            'middle_name',
+            'full_name',
             'role',
             'role_display',
-            'is_staff',
             'profile_picture_url'
         ]
         read_only_fields = fields
 
     def get_profile_picture_url(self, obj):
         if obj.profile_picture and hasattr(obj.profile_picture, 'url'):
-            return obj.profile_picture.url  # Возвращаем URL для изображения профиля
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
         return None
+
+    def get_full_name(self, obj):
+        return obj.get_full_name()
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
-    profile_picture_url = serializers.SerializerMethodField(read_only=True)
+    password = serializers.CharField(
+        write_only=True,
+        min_length=8,
+        style={'input_type': 'password'}
+    )
+    email = serializers.EmailField(required=True)
 
     class Meta:
         model = User
@@ -36,23 +51,15 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'password',
             'first_name',
             'last_name',
-            'profile_picture_url'
+            'middle_name',
+            'profile_picture'
         ]
         extra_kwargs = {
-            'password': {
-                'write_only': True,
-                'min_length': 8
-            },
-            'email': {
-                'required': True,
-                'allow_blank': False
-            }
+            'first_name': {'required': False, 'allow_blank': True},
+            'last_name': {'required': False, 'allow_blank': True},
+            'middle_name': {'required': False, 'allow_blank': True},
+            'profile_picture': {'required': False}
         }
-
-    def get_profile_picture_url(self, obj):
-        if obj.profile_picture and hasattr(obj.profile_picture, 'url'):
-            return obj.profile_picture.url  # Возвращаем URL для изображения профиля
-        return None
 
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
@@ -65,17 +72,63 @@ class UserCreateSerializer(serializers.ModelSerializer):
             is_active=True
         )
 
+class UserUpdateSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=False)
+    
+    class Meta:
+        model = User
+        fields = [
+            'first_name',
+            'last_name',
+            'middle_name',
+            'email',
+            'profile_picture'
+        ]
+        extra_kwargs = {
+            'first_name': {'required': False, 'allow_blank': True},
+            'last_name': {'required': False, 'allow_blank': True},
+            'middle_name': {'required': False, 'allow_blank': True},
+            'email': {'required': False},
+            'profile_picture': {'required': False}
+        }
+
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exclude(pk=self.instance.pk).exists():
+            raise serializers.ValidationError("Пользователь с таким email уже существует")
+        return value.lower()
+
+    def update(self, instance, validated_data):
+        # Разрешаем обновлять только определенные поля для обычных пользователей
+        if not self.context['request'].user.is_staff:
+            allowed_fields = {'first_name', 'last_name', 'middle_name', 'email', 'profile_picture'}
+            for field in list(validated_data.keys()):
+                if field not in allowed_fields:
+                    validated_data.pop(field)
+        
+        return super().update(instance, validated_data)
+
+
 
 class AttachmentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
+    filename = serializers.SerializerMethodField()
 
     class Meta:
         model = Attachment
-        fields = ['id', 'file', 'file_url', 'uploaded_at']
+        fields = ['id', 'file', 'file_url', 'filename', 'uploaded_at']
+        read_only_fields = ['id', 'file_url', 'filename', 'uploaded_at']
 
     def get_file_url(self, obj):
         if obj.file and hasattr(obj.file, 'url'):
-            return obj.file.url  # Возвращаем URL для вложения
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+
+    def get_filename(self, obj):
+        if obj.file:
+            return obj.file.name.split('/')[-1]
         return None
 
 
@@ -99,20 +152,9 @@ class CommentSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'author', 'created_at', 'updated_at', 'is_system', 'is_modified', 'is_deleted'
         ]
-        extra_kwargs = {
-            'text': {
-                'required': True,
-                'allow_blank': False,
-                'min_length': 2,
-                'error_messages': {
-                    'blank': 'Текст комментария не может быть пустым',
-                    'min_length': 'Комментарий должен содержать минимум 2 символа'
-                }
-            }
-        }
 
     def get_is_modified(self, obj):
-        return obj.is_modified
+        return obj.created_at != obj.updated_at
 
 
 class TaskListSerializer(serializers.ModelSerializer):
@@ -120,7 +162,7 @@ class TaskListSerializer(serializers.ModelSerializer):
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
     responsible = UserBasicSerializer(read_only=True)
     comments_count = serializers.SerializerMethodField()
-    is_overdue = serializers.BooleanField(read_only=True)
+    is_overdue = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -142,6 +184,11 @@ class TaskListSerializer(serializers.ModelSerializer):
 
     def get_comments_count(self, obj):
         return obj.comments.filter(is_deleted=False).count()
+
+    def get_is_overdue(self, obj):
+        if obj.deadline and obj.status != 'closed':
+            return obj.deadline < timezone.now()
+        return False
 
 
 class TaskDetailSerializer(TaskListSerializer):
@@ -172,9 +219,11 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
-    responsible = UserBasicSerializer(read_only=True)
-    attachments = AttachmentSerializer(many=True, read_only=True)
-    is_overdue = serializers.BooleanField(read_only=True)
+    attachments = serializers.ListField(
+        child=serializers.FileField(),
+        write_only=True,
+        required=False
+    )
 
     class Meta:
         model = Task
@@ -183,10 +232,8 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
             'description',
             'status',
             'priority',
-            'responsible_id',  # для записи
-            'responsible',     # для чтения
             'deadline',
-            'is_overdue',
+            'responsible_id',
             'attachments'
         ]
         extra_kwargs = {
@@ -202,6 +249,10 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
             'priority': {
                 'required': False,
                 'default': 'medium'
+            },
+            'status': {
+                'required': False,
+                'default': 'open'
             }
         }
 
@@ -219,5 +270,28 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        attachments = validated_data.pop('attachments', [])
         validated_data['created_by'] = self.context['request'].user
-        return super().create(validated_data)
+        task = super().create(validated_data)
+        
+        for attachment in attachments:
+            Attachment.objects.create(
+                file=attachment,
+                task=task,
+                uploaded_by=validated_data['created_by']
+            )
+        
+        return task
+
+    def update(self, instance, validated_data):
+        attachments = validated_data.pop('attachments', [])
+        task = super().update(instance, validated_data)
+        
+        for attachment in attachments:
+            Attachment.objects.create(
+                file=attachment,
+                task=task,
+                uploaded_by=self.context['request'].user
+            )
+        
+        return task

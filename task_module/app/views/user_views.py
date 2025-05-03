@@ -1,14 +1,14 @@
 from rest_framework import generics, permissions, status, views
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from PIL import Image  # type: ignore
 from io import BytesIO
+from rest_framework.parsers import MultiPartParser, FormParser
 
 from ..models import User
-from ..serializers import UserBasicSerializer, UserCreateSerializer
+from ..serializers import UserBasicSerializer, UserCreateSerializer, UserUpdateSerializer
 from app.utils.auth import RedisSessionAuthentication
 
 
@@ -31,67 +31,75 @@ class UserListView(generics.ListAPIView):
         return super().get(request, *args, **kwargs)
 
 
+
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [RedisSessionAuthentication]
     queryset = User.objects.all()
-
-    def get_serializer_class(self):
-        return UserBasicSerializer
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_permissions(self):
-        if self.request.method in ['PUT', 'PATCH', 'DELETE']:
+        if self.request.method == 'DELETE':
             return [permissions.IsAdminUser()]
         return [permissions.IsAuthenticated()]
 
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return UserUpdateSerializer
+        return UserBasicSerializer
+
+    def get_object(self):
+        if self.kwargs.get('pk') == 'me':
+            return self.request.user
+        obj = super().get_object()
+        if obj != self.request.user and not self.request.user.is_staff:
+            raise PermissionDenied("Вы можете просматривать только свой профиль")
+        return obj
+
     @swagger_auto_schema(
-        operation_description="Получить информацию о пользователе",
+        operation_description="Обновить данные пользователя",
         manual_parameters=[
             openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
                               description="Идентификатор сессии",
                               type=openapi.TYPE_STRING, required=True)
         ],
-        responses={200: UserBasicSerializer()}
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_description="Обновить данные пользователя (только админ)",
-        request_body=UserBasicSerializer,
-        manual_parameters=[
-            openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
-                              description="Сессия администратора",
-                              type=openapi.TYPE_STRING, required=True)
-        ],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'first_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'last_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'middle_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'email': openapi.Schema(type=openapi.TYPE_STRING, format='email'),
+                'profile_picture': openapi.Schema(type=openapi.TYPE_FILE)
+            },
+            required=[]
+        ),
         responses={200: UserBasicSerializer()}
     )
     def put(self, request, *args, **kwargs):
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Частичное обновление пользователя (только админ)",
-        request_body=UserBasicSerializer,
+        operation_description="Частичное обновление пользователя",
         manual_parameters=[
             openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
-                              description="Сессия администратора",
+                              description="Идентификатор сессии",
                               type=openapi.TYPE_STRING, required=True)
         ],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'first_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'last_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'middle_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'email': openapi.Schema(type=openapi.TYPE_STRING, format='email'),
+                'profile_picture': openapi.Schema(type=openapi.TYPE_FILE)
+            },
+            required=[]
+        ),
         responses={200: UserBasicSerializer()}
     )
     def patch(self, request, *args, **kwargs):
         return super().patch(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_description="Удалить пользователя (только админ)",
-        manual_parameters=[
-            openapi.Parameter('X-Session-ID', openapi.IN_HEADER,
-                              description="Сессия администратора",
-                              type=openapi.TYPE_STRING, required=True)
-        ],
-        responses={204: 'Пользователь удалён'}
-    )
-    def delete(self, request, *args, **kwargs):
-        return super().delete(request, *args, **kwargs)
 
 
 class UserCreateView(generics.CreateAPIView):

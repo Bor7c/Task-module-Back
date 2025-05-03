@@ -9,6 +9,7 @@ class User(AbstractUser):
         ('developer', 'Разработчик'),
     ]
     
+    # Основные поля
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
@@ -19,7 +20,29 @@ class User(AbstractUser):
         default=True,
         verbose_name='Активный'
     )
-    profile_picture = models.ImageField(upload_to='profiles/', blank=True, null=True, verbose_name='Фото профиля')
+    profile_picture = models.ImageField(
+        upload_to='profiles/', 
+        blank=True, 
+        null=True, 
+        verbose_name='Фото профиля'
+    )
+    
+    # Дополнительные персональные поля (необязательные)
+    first_name = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name='Имя'
+    )
+    last_name = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name='Фамилия'
+    )
+    middle_name = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name='Отчество'
+    )
 
     class Meta:
         verbose_name = 'Пользователь'
@@ -28,7 +51,14 @@ class User(AbstractUser):
 
     def __str__(self):
         return f'{self.username} ({self.get_role_display()})'
-
+    
+    def get_full_name(self):
+        """
+        Возвращает полное имя пользователя в формате "Фамилия Имя Отчество"
+        Если какие-то части имени отсутствуют, они не включаются в результат
+        """
+        parts = [self.last_name, self.first_name, self.middle_name]
+        return ' '.join(part for part in parts if part).strip() or self.username
 
 class Task(models.Model):
     STATUS_CHOICES = [

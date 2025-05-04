@@ -190,9 +190,11 @@ class TaskListSerializer(serializers.ModelSerializer):
         return obj.comments.filter(is_deleted=False).count()
 
     def get_is_overdue(self, obj):
-        if obj.deadline and obj.status != 'closed' or 'solved':
+        if obj.deadline is not None and obj.status not in ['closed']:
             return obj.deadline < timezone.now()
-        return False
+        elif obj.deadline is not None and obj.status in ['closed']:
+            return obj.deadline < obj.closed_at
+
 
 
 class TaskDetailSerializer(TaskListSerializer):

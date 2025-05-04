@@ -112,24 +112,28 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 class AttachmentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
     filename = serializers.SerializerMethodField()
+    uploaded_by = UserBasicSerializer(read_only=True)
 
     class Meta:
         model = Attachment
-        fields = ['id', 'file', 'file_url', 'filename', 'uploaded_at']
-        read_only_fields = ['id', 'file_url', 'filename', 'uploaded_at']
+        fields = [
+            'id',
+            'file_url',
+            'filename',
+            'uploaded_at',
+            'uploaded_by',
+            'task'
+        ]
+        read_only_fields = fields
 
     def get_file_url(self, obj):
+        request = self.context.get('request')
         if obj.file and hasattr(obj.file, 'url'):
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.file.url)
-            return obj.file.url
+            return request.build_absolute_uri(obj.file.url) if request else obj.file.url
         return None
 
     def get_filename(self, obj):
-        if obj.file:
-            return obj.file.name.split('/')[-1]
-        return None
+        return obj.file.name.split('/')[-1] if obj.file else None
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -252,7 +256,7 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
             },
             'status': {
                 'required': False,
-                'default': 'open'
+                'default': 'awaiting_action'
             }
         }
 

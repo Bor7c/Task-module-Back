@@ -226,8 +226,14 @@ class Comment(models.Model):
 
 
 class Attachment(models.Model):
-    file = models.FileField(upload_to='attachments/', verbose_name='Файл')
+    file = models.FileField(upload_to='attachments/task_{instance.task.id}', verbose_name='Файл')
     uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата загрузки')
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name='uploaded_attachments',
+        verbose_name='Загрузивший пользователь'
+    )
     
     task = models.ForeignKey(
         Task,

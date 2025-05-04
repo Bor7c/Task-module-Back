@@ -1,4 +1,6 @@
 # app/views/task_views.py
+import os
+from django.http import FileResponse
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -204,46 +206,117 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 class AttachmentView(APIView):
-    """Работа с вложениями"""
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(
-        operation_description="Добавить вложение к задаче",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=["files"],
-            properties={
-                "files": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(type=openapi.TYPE_FILE), description="Файлы вложения"),
-            },
-        ),
-        manual_parameters=[
-            openapi.Parameter('X-Session-ID', openapi.IN_HEADER, description="Идентификатор сессии", type=openapi.TYPE_STRING, required=True)
-        ],
-        responses={
-            201: openapi.Response('Вложение добавлено', AttachmentSerializer(many=True)),
-            400: 'Неверные данные',
-            401: 'Не авторизован',
-            403: 'Доступ запрещен',
-            404: 'Задача не найдена'
-        }
-    )
+    def get(self, request, task_id):
+        """Получить список вложений задачи"""
+        try:
+            user = get_user_from_request(request)
+            task = get_object_or_404(Task, pk=task_id, is_deleted=False)
+            attachments = task.attachments.all()
+            serializer = AttachmentSerializer(attachments, many=True, context={'request': request})
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
     def post(self, request, task_id):
-        user = get_user_from_request(request)
-        task = get_object_or_404(Task, pk=task_id, is_deleted=False)
-        
-        files = request.FILES.getlist('files')  # Получаем список файлов
-        if not files:
-            return Response({"error": "Файлы не предоставлены"}, status=status.HTTP_400_BAD_REQUEST)
+        """Добавить вложения к задаче"""
+        try:
+            user = get_user_from_request(request)
+            task = get_object_or_404(Task, pk=task_id, is_deleted=False)
+            
+            if not request.FILES.getlist('files'):
+                return Response(
+                    {"error": "No files were provided"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        attachments = []
-        for file in files:
-            attachment = Attachment.objects.create(file=file, task=task)
-            attachments.append(attachment)
+            attachments = []
+            for file in request.FILES.getlist('files'):
+                # Проверка размера файла (например, не более 10MB)
+                if file.size > 10 * 1024 * 1024:
+                    continue
+                
+                attachment = Attachment.objects.create(
+                    file=file,
+                    task=task,
+                    uploaded_by=user  # Теперь это поле существует в модели
+                )
+                attachments.append(attachment)
 
-        return Response(AttachmentSerializer(attachments, many=True).data, status=status.HTTP_201_CREATED)
+            if not attachments:
+                return Response(
+                    {"error": "No valid files were uploaded"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            serializer = AttachmentSerializer(attachments, many=True, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
+
+class AttachmentDetailView(APIView):
+    authentication_classes = [RedisSessionAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, attachment_id):
+        """Скачать вложение"""
+        try:
+            user = get_user_from_request(request)
+            attachment = get_object_or_404(Attachment, pk=attachment_id)
+            
+            if not attachment.file:
+                return Response(
+                    {"error": "File not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            file = attachment.file.open('rb')
+            response = FileResponse(file)
+            filename = os.path.basename(attachment.file.name)
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    def delete(self, request, attachment_id):
+        """Удалить вложение"""
+        try:
+            user = get_user_from_request(request)
+            attachment = get_object_or_404(Attachment, pk=attachment_id)
+            
+            # Проверка прав - только автор или ответственный может удалить
+            if (user.id != attachment.uploaded_by.id and 
+                (not attachment.task.responsible or user.id != attachment.task.responsible.id)):
+                return Response(
+                    {"error": "You don't have permission to delete this attachment"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            attachment.file.delete()  # Удаляем файл из хранилища
+            attachment.delete()       # Удаляем запись из БД
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+                  
 class AssignToMeView(APIView):
     """Назначить себя ответственным за задачу"""
     authentication_classes = [RedisSessionAuthentication]

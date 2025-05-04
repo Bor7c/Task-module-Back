@@ -6,6 +6,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from .views.task_views import (
+    AttachmentDetailView,
     TaskListCreateView,
     TaskDetailView,
     AssignResponsibleView,
@@ -61,9 +62,9 @@ urlpatterns = [
     path('tasks/<int:pk>/remove_responsible/', RemoveResponsibleView.as_view(), name='remove-responsible'),
     
     # Вложения
-    path('tasks/<int:task_id>/attachments/', AttachmentView.as_view(), name='task-attachment-create'),
-    path('tasks/<int:task_id>/attachments/<int:attachment_id>/', AttachmentView.as_view(), name='task-attachment-delete'),
-
+    path('tasks/<int:task_id>/attachments/', AttachmentView.as_view(), name='task-attachments'),
+    path('attachments/<int:attachment_id>/', AttachmentDetailView.as_view(), name='attachment-detail'),
+    
     # Комментарии
     path('tasks/<int:task_id>/comments/', CommentListCreateView.as_view(), name='task-comment-list'),
     path('comments/<int:pk>/', CommentDetailView.as_view(), name='comment-detail'),

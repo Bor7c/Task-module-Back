@@ -146,7 +146,7 @@ class Task(models.Model):
         now = timezone.now()
         if not self.deadline or self.deadline >= now:
             self.is_overdue = False
-        elif self.status in ['in_progress', 'awaiting_response', 'awaiting_action']:
+        elif self.status in ['in_progress', 'awaiting_response', 'awaiting_action', 'closed', 'solved']:
             self.is_overdue = True
 
     @classmethod

@@ -158,7 +158,7 @@ class CommentSerializer(serializers.ModelSerializer):
         ]
 
     def get_is_modified(self, obj):
-        return obj.created_at != obj.updated_at
+        return obj.is_modified
 
 
 class TaskListSerializer(serializers.ModelSerializer):
@@ -190,10 +190,11 @@ class TaskListSerializer(serializers.ModelSerializer):
         return obj.comments.filter(is_deleted=False).count()
 
     def get_is_overdue(self, obj):
-        if obj.deadline is not None and obj.status not in ['closed']:
-            return obj.deadline < timezone.now()
-        elif obj.deadline is not None and obj.status in ['closed']:
-            return obj.deadline < obj.closed_at
+        # if obj.deadline is not None and obj.status not in ['closed','solved']:
+        #     return obj.deadline < timezone.now()
+        # elif obj.deadline is not None and obj.status in ['closed']:
+        #     return obj.deadline < obj.closed_at
+        return obj.is_overdue
 
 
 

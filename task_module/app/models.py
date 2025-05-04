@@ -225,8 +225,16 @@ class Comment(models.Model):
         self.save(update_fields=['is_deleted', 'updated_at'])
 
 
+
+
+
+def get_attachment_upload_path(instance, filename):
+    # Здесь вы можете использовать атрибуты экземпляра, чтобы создать динамический путь
+    task_id = instance.task.id if instance.task else 'no_task'
+    return f'attachments/task_{task_id}/{filename}'
+
 class Attachment(models.Model):
-    file = models.FileField(upload_to='attachments/task_{instance.task.id}', verbose_name='Файл')
+    file = models.FileField(upload_to=get_attachment_upload_path, verbose_name='Файл')
     uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата загрузки')
     uploaded_by = models.ForeignKey(
         User,

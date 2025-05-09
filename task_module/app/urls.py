@@ -4,6 +4,8 @@ from drf_yasg import openapi
 from rest_framework import permissions
 from django.conf import settings
 from django.conf.urls.static import static
+from .views.team_views import TeamViewSet
+
 
 from .views.task_views import (
     AttachmentDetailView,
@@ -36,6 +38,27 @@ schema_view = get_schema_view(
     permission_classes=[permissions.AllowAny],
 )
 
+team_list = TeamViewSet.as_view({
+    'get': 'list',
+    'post': 'create',
+})
+
+team_detail = TeamViewSet.as_view({
+    'get': 'retrieve',
+    'put': 'update',
+    'patch': 'partial_update',
+    'delete': 'destroy',
+})
+
+team_add_member = TeamViewSet.as_view({
+    'post': 'add_member',
+})
+
+team_remove_member = TeamViewSet.as_view({
+    'post': 'remove_member',
+})
+
+
 urlpatterns = [
     # Документация API
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
@@ -47,6 +70,12 @@ urlpatterns = [
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('auth/session-check/', SessionCheckView.as_view(), name='auth-session-check'),
     
+    # Команды
+    path('teams/', team_list, name='team-list'),
+    path('teams/<int:pk>/', team_detail, name='team-detail'),
+    path('teams/<int:pk>/add-member/', team_add_member, name='team-add-member'),
+    path('teams/<int:pk>/remove-member/', team_remove_member, name='team-remove-member'),
+
     # Пользователи
     path('users/', UserListView.as_view(), name='user-list'),
     path('users/create/', UserCreateView.as_view(), name='user-create'),

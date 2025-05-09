@@ -1,11 +1,79 @@
 from rest_framework import serializers
-from .models import Task, Comment, User, Attachment
+from .models import Task, Comment, User, Attachment, Team
 from django.utils import timezone
+
+class TeamBasicSerializer(serializers.ModelSerializer):
+    members_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Team
+        fields = [
+            'id',
+            'name',
+            'description',
+            'members_count',
+            'is_default'
+        ]
+        read_only_fields = fields
+
+    def get_members_count(self, obj):
+        return obj.members.count()
+
+class TeamDetailSerializer(TeamBasicSerializer):
+    members = serializers.SerializerMethodField()
+
+    class Meta(TeamBasicSerializer.Meta):
+        fields = TeamBasicSerializer.Meta.fields + ['members']
+
+    def get_members(self, obj):
+        members = obj.members.filter(is_active=True)
+        return UserBasicSerializer(members, many=True, context=self.context).data
+
+class TeamCreateUpdateSerializer(serializers.ModelSerializer):
+    members_ids = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(is_active=True),
+        source='members',
+        many=True,
+        required=False
+    )
+
+    class Meta:
+        model = Team
+        fields = [
+            'name',
+            'description',
+            'members_ids'
+        ]
+        extra_kwargs = {
+            'name': {'min_length': 3, 'max_length': 255},
+            'description': {'required': False, 'allow_blank': True}
+        }
+
+    def validate_name(self, value):
+        if Team.objects.filter(name__iexact=value).exists():
+            raise serializers.ValidationError("Команда с таким названием уже существует")
+        return value
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        members = validated_data.pop('members', [])
+        team = Team.objects.create(**validated_data)
+        
+        # Автоматически добавляем создателя в команду, если он не админ/менеджер
+        creator = request.user
+        if creator.role not in ['admin', 'manager'] and creator not in members:
+            team.members.add(creator)
+        
+        if members:
+            team.members.add(*members)
+        
+        return team
 
 class UserBasicSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)
     profile_picture_url = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
+    teams = TeamBasicSerializer(many=True, read_only=True)
 
     class Meta:
         model = User
@@ -19,7 +87,8 @@ class UserBasicSerializer(serializers.ModelSerializer):
             'full_name',
             'role',
             'role_display',
-            'profile_picture_url'
+            'profile_picture_url',
+            'teams'
         ]
         read_only_fields = fields
 
@@ -33,7 +102,6 @@ class UserBasicSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         return obj.get_full_name()
-
 
 class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
@@ -52,13 +120,15 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'middle_name',
-            'profile_picture'
+            'profile_picture',
+            'role'
         ]
         extra_kwargs = {
             'first_name': {'required': False, 'allow_blank': True},
             'last_name': {'required': False, 'allow_blank': True},
             'middle_name': {'required': False, 'allow_blank': True},
-            'profile_picture': {'required': False}
+            'profile_picture': {'required': False},
+            'role': {'required': False, 'default': 'developer'}
         }
 
     def validate_email(self, value):
@@ -67,14 +137,18 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return value.lower()
 
     def create(self, validated_data):
-        return User.objects.create_user(
-            **validated_data,
-            is_active=True
-        )
+        user = User.objects.create_user(**validated_data, is_active=True)
+        return user
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=False)
-    
+    teams_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Team.objects.all(),
+        source='teams',
+        many=True,
+        required=False
+    )
+
     class Meta:
         model = User
         fields = [
@@ -82,14 +156,17 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             'last_name',
             'middle_name',
             'email',
-            'profile_picture'
+            'profile_picture',
+            'role',
+            'teams_ids'
         ]
         extra_kwargs = {
             'first_name': {'required': False, 'allow_blank': True},
             'last_name': {'required': False, 'allow_blank': True},
             'middle_name': {'required': False, 'allow_blank': True},
             'email': {'required': False},
-            'profile_picture': {'required': False}
+            'profile_picture': {'required': False},
+            'role': {'required': False}
         }
 
     def validate_email(self, value):
@@ -99,15 +176,21 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         # Разрешаем обновлять только определенные поля для обычных пользователей
-        if not self.context['request'].user.is_staff:
+        request = self.context.get('request')
+        if not request.user.is_staff and request.user != instance:
             allowed_fields = {'first_name', 'last_name', 'middle_name', 'email', 'profile_picture'}
             for field in list(validated_data.keys()):
                 if field not in allowed_fields:
                     validated_data.pop(field)
         
-        return super().update(instance, validated_data)
-
-
+        teams = validated_data.pop('teams', None)
+        instance = super().update(instance, validated_data)
+        
+        # Обновляем команды, если они были переданы и пользователь имеет права
+        if teams is not None and request.user.can_add_to_team():
+            instance.teams.set(teams)
+        
+        return instance
 
 class AttachmentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
@@ -135,10 +218,10 @@ class AttachmentSerializer(serializers.ModelSerializer):
     def get_filename(self, obj):
         return obj.file.name.split('/')[-1] if obj.file else None
 
-
 class CommentSerializer(serializers.ModelSerializer):
     author = UserBasicSerializer(read_only=True)
     is_modified = serializers.SerializerMethodField()
+    attachments = AttachmentSerializer(many=True, read_only=True)
 
     class Meta:
         model = Comment
@@ -152,14 +235,14 @@ class CommentSerializer(serializers.ModelSerializer):
             'is_system',
             'is_modified',
             'is_deleted',
+            'attachments'
         ]
         read_only_fields = [
-            'id', 'author', 'created_at', 'updated_at', 'is_system', 'is_modified', 'is_deleted'
+            'id', 'author', 'created_at', 'updated_at', 'is_system', 'is_modified', 'is_deleted', 'attachments'
         ]
 
     def get_is_modified(self, obj):
-        return obj.is_modified
-
+        return obj.created_at != obj.updated_at
 
 class TaskListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -167,6 +250,7 @@ class TaskListSerializer(serializers.ModelSerializer):
     responsible = UserBasicSerializer(read_only=True)
     comments_count = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
+    team = TeamBasicSerializer(read_only=True)
 
     class Meta:
         model = Task
@@ -178,6 +262,7 @@ class TaskListSerializer(serializers.ModelSerializer):
             'priority',
             'priority_display',
             'responsible',
+            'team',
             'deadline',
             'created_at',
             'updated_at',
@@ -190,13 +275,7 @@ class TaskListSerializer(serializers.ModelSerializer):
         return obj.comments.filter(is_deleted=False).count()
 
     def get_is_overdue(self, obj):
-        # if obj.deadline is not None and obj.status not in ['closed','solved']:
-        #     return obj.deadline < timezone.now()
-        # elif obj.deadline is not None and obj.status in ['closed']:
-        #     return obj.deadline < obj.closed_at
         return obj.is_overdue
-
-
 
 class TaskDetailSerializer(TaskListSerializer):
     created_by = UserBasicSerializer(read_only=True)
@@ -217,7 +296,6 @@ class TaskDetailSerializer(TaskListSerializer):
     def get_is_closed(self, obj):
         return obj.status == 'closed'
 
-
 class TaskCreateUpdateSerializer(serializers.ModelSerializer):
     responsible_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(is_active=True),
@@ -225,6 +303,12 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False,
         allow_null=True
+    )
+    team_id = serializers.PrimaryKeyRelatedField(
+        queryset=Team.objects.all(),
+        source='team',
+        write_only=True,
+        required=True
     )
     attachments = serializers.ListField(
         child=serializers.FileField(),
@@ -241,6 +325,7 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
             'priority',
             'deadline',
             'responsible_id',
+            'team_id',
             'attachments'
         ]
         extra_kwargs = {
@@ -267,6 +352,19 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
         if value == 'closed' and not self.instance:
             raise serializers.ValidationError("Невозможно создать задачу со статусом 'closed'")
         return value
+
+    def validate_team_id(self, team):
+        request = self.context.get('request')
+        if not request.user.get_available_teams().filter(pk=team.pk).exists():
+            raise serializers.ValidationError("У вас нет доступа к этой команде")
+        return team
+
+    def validate_responsible_id(self, responsible):
+        team = self.initial_data.get('team_id')
+        if responsible and team:
+            if not Team.objects.get(pk=team).members.filter(pk=responsible.pk).exists():
+                raise serializers.ValidationError("Ответственный должен быть членом выбранной команды")
+        return responsible
 
     def validate(self, data):
         if data.get('status') == 'closed':

@@ -94,3 +94,13 @@ class TeamViewSet(viewsets.ModelViewSet):
 
         serializer = TeamDetailSerializer(team, context={'request': request})
         return Response(serializer.data, status=200)
+    
+    
+    @action(detail=False, methods=['get'], url_path='all')
+    def list_all_teams(self, request):
+        """
+        Возвращает все команды (независимо от роли пользователя) в сокращённом формате
+        """
+        teams = Team.objects.all()
+        serializer = TeamBasicSerializer(teams, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)

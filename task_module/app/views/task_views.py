@@ -263,8 +263,6 @@ class AttachmentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-
-
 class AttachmentDetailView(APIView):
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [IsAuthenticated]

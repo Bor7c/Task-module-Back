@@ -6,7 +6,6 @@ from django.conf import settings
 from django.conf.urls.static import static
 from .views.team_views import TeamViewSet
 
-
 from .views.task_views import (
     AttachmentDetailView,
     TaskListCreateView,
@@ -38,6 +37,7 @@ schema_view = get_schema_view(
     permission_classes=[permissions.AllowAny],
 )
 
+# TeamViewSet actions
 team_list = TeamViewSet.as_view({
     'get': 'list',
     'post': 'create',
@@ -58,6 +58,9 @@ team_remove_member = TeamViewSet.as_view({
     'post': 'remove_member',
 })
 
+team_all = TeamViewSet.as_view({
+    'get': 'list_all_teams',
+})
 
 urlpatterns = [
     # Документация API
@@ -75,6 +78,7 @@ urlpatterns = [
     path('teams/<int:pk>/', team_detail, name='team-detail'),
     path('teams/<int:pk>/add-member/', team_add_member, name='team-add-member'),
     path('teams/<int:pk>/remove-member/', team_remove_member, name='team-remove-member'),
+    path('teams/all/', team_all, name='team-all'),
 
     # Пользователи
     path('users/', UserListView.as_view(), name='user-list'),

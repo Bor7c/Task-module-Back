@@ -29,7 +29,6 @@ class TeamDetailSerializer(TeamBasicSerializer):
         members = obj.members.filter(is_active=True)
         return UserBasicSerializer(members, many=True, context=self.context).data
 
-
 class TeamUpdateSerializer(serializers.ModelSerializer):
     members_ids = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(is_active=True),
@@ -58,8 +57,6 @@ class TeamUpdateSerializer(serializers.ModelSerializer):
             instance.members.set(members)
 
         return instance
-
-
 
 class TeamCreateUpdateSerializer(serializers.ModelSerializer):
     members_ids = serializers.PrimaryKeyRelatedField(
@@ -100,6 +97,8 @@ class TeamCreateUpdateSerializer(serializers.ModelSerializer):
             team.members.add(*members)
         
         return team
+
+
 
 class UserBasicSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)
@@ -224,6 +223,8 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         
         return instance
 
+
+
 class AttachmentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
     filename = serializers.SerializerMethodField()
@@ -250,6 +251,8 @@ class AttachmentSerializer(serializers.ModelSerializer):
     def get_filename(self, obj):
         return obj.file.name.split('/')[-1] if obj.file else None
 
+
+
 class CommentSerializer(serializers.ModelSerializer):
     author = UserBasicSerializer(read_only=True)
     is_modified = serializers.SerializerMethodField()
@@ -275,6 +278,8 @@ class CommentSerializer(serializers.ModelSerializer):
 
     def get_is_modified(self, obj):
         return obj.created_at != obj.updated_at
+
+
 
 class TaskListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)

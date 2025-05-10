@@ -4,7 +4,9 @@ from app.models import Team, User
 from app.serializers import (
     TeamBasicSerializer,
     TeamDetailSerializer,
-    TeamCreateUpdateSerializer
+    TeamCreateUpdateSerializer,
+    TeamUpdateSerializer  # <-- Добавили!
+
 )
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -17,7 +19,11 @@ class TeamViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action in ['list', 'retrieve']:
             return TeamDetailSerializer
-        return TeamCreateUpdateSerializer
+        elif self.action == 'create':
+            return TeamCreateUpdateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return TeamUpdateSerializer
+        return TeamDetailSerializer  # безопасный fallback
 
     def get_queryset(self):
         return self.request.user.get_available_teams()

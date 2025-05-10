@@ -29,6 +29,38 @@ class TeamDetailSerializer(TeamBasicSerializer):
         members = obj.members.filter(is_active=True)
         return UserBasicSerializer(members, many=True, context=self.context).data
 
+
+class TeamUpdateSerializer(serializers.ModelSerializer):
+    members_ids = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(is_active=True),
+        source='members',
+        many=True,
+        required=False
+    )
+
+    class Meta:
+        model = Team
+        fields = [
+            'name',
+            'description',
+            'members_ids'
+        ]
+        extra_kwargs = {
+            'name': {'min_length': 3, 'max_length': 255},
+            'description': {'required': False, 'allow_blank': True}
+        }
+
+    def update(self, instance, validated_data):
+        members = validated_data.pop('members', None)
+        instance = super().update(instance, validated_data)
+
+        if members is not None:
+            instance.members.set(members)
+
+        return instance
+
+
+
 class TeamCreateUpdateSerializer(serializers.ModelSerializer):
     members_ids = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(is_active=True),

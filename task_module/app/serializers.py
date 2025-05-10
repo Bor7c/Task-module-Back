@@ -277,7 +277,7 @@ class CommentSerializer(serializers.ModelSerializer):
         ]
 
     def get_is_modified(self, obj):
-        return obj.created_at != obj.updated_at
+        return obj.is_modified
 
 
 

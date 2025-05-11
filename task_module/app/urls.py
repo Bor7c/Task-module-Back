@@ -8,8 +8,11 @@ from .views.team_views import TeamViewSet
 
 from .views.task_views import (
     AttachmentDetailView,
+    MyCreatedTasksView,
+    MyResponsibleTasksView,
     TaskListCreateView,
     TaskDetailView,
+    MyTeamTasksView,
     AssignResponsibleView,
     RemoveResponsibleView,
     AssignToMeView,
@@ -89,6 +92,10 @@ urlpatterns = [
 
     # Задачи
     path('tasks/', TaskListCreateView.as_view(), name='task-list'),
+    path('tasks/my-team/', MyTeamTasksView.as_view(), name='task-my-team'),
+    path('tasks/my-responsible/', MyResponsibleTasksView.as_view(), name='my-responsible-tasks'),
+    path('tasks/my-created/', MyCreatedTasksView.as_view(), name='my-created-tasks'),
+
     path('tasks/<int:pk>/', TaskDetailView.as_view(), name='task-detail'),
     path('tasks/<int:task_id>/assign_to_me/', AssignToMeView.as_view(), name='assign_to_me'),
     path('tasks/<int:pk>/assign_responsible/', AssignResponsibleView.as_view(), name='assign-responsible'),

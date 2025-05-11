@@ -13,6 +13,10 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from rest_framework import viewsets, permissions
+from rest_framework.generics import ListAPIView
+
+
 
 def get_user_from_request(request):
     session_id = request.COOKIES.get('session_token') or request.headers.get('X-Session-ID')
@@ -204,6 +208,29 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         task.is_deleted = True
         task.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
+class MyTeamTasksView(ListAPIView):
+    serializer_class = TaskListSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        available_teams = user.get_my_teams()
+        return Task.objects.filter(team__in=available_teams, is_deleted=False)
+    
+class MyResponsibleTasksView(ListAPIView):
+    serializer_class = TaskListSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Task.objects.filter(responsible=self.request.user, is_deleted=False)
+    
+class MyCreatedTasksView(ListAPIView):
+    serializer_class = TaskListSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Task.objects.filter(created_by=self.request.user, is_deleted=False)
 
 class AttachmentView(APIView):
     authentication_classes = [RedisSessionAuthentication]

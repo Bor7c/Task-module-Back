@@ -288,6 +288,8 @@ class TaskListSerializer(serializers.ModelSerializer):
     comments_count = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
     team = TeamBasicSerializer(read_only=True)
+    created_by = UserBasicSerializer(read_only=True)
+
 
     class Meta:
         model = Task
@@ -304,7 +306,8 @@ class TaskListSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'comments_count',
-            'is_overdue'
+            'is_overdue',
+            'created_by'
         ]
         read_only_fields = fields
 
@@ -319,6 +322,7 @@ class TaskDetailSerializer(TaskListSerializer):
     comments = CommentSerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
     is_closed = serializers.SerializerMethodField()
+    team = TeamDetailSerializer(read_only=True)
 
     class Meta(TaskListSerializer.Meta):
         fields = TaskListSerializer.Meta.fields + [

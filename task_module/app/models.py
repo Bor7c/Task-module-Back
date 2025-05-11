@@ -85,6 +85,10 @@ class User(AbstractUser):
             return Team.objects.all()
         return self.teams.all()
 
+    def get_my_teams(self):
+        """Возвращает команды, в которых пользователь является участником"""
+        return self.teams.all()
+
     def can_manage_team(self, team):
         return self.role == 'admin'
 

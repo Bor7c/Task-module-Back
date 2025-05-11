@@ -200,11 +200,6 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             'role': {'required': False}
         }
 
-    def validate_email(self, value):
-        if User.objects.filter(email__iexact=value).exclude(pk=self.instance.pk).exists():
-            raise serializers.ValidationError("Пользователь с таким email уже существует")
-        return value.lower()
-
     def update(self, instance, validated_data):
         # Разрешаем обновлять только определенные поля для обычных пользователей
         request = self.context.get('request')

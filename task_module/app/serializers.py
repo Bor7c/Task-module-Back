@@ -28,6 +28,18 @@ class TeamDetailSerializer(TeamBasicSerializer):
     def get_members(self, obj):
         members = obj.members.filter(is_active=True)
         return UserBasicSerializer(members, many=True, context=self.context).data
+    
+
+class TeamTasklSerializer(TeamBasicSerializer):
+    members = serializers.SerializerMethodField()
+
+    class Meta(TeamBasicSerializer.Meta):
+        fields = TeamBasicSerializer.Meta.fields + ['members']
+
+    def get_members(self, obj):
+        members = obj.members.filter(is_active=True)
+        return UserForTeamSerializer(members, many=True, context=self.context).data
+
 
 class TeamUpdateSerializer(serializers.ModelSerializer):
     members_ids = serializers.PrimaryKeyRelatedField(
@@ -98,6 +110,17 @@ class TeamCreateUpdateSerializer(serializers.ModelSerializer):
         
         return team
 
+
+
+class UserForTeamSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'username',
+        ]
+        read_only_fields = fields
 
 
 class UserBasicSerializer(serializers.ModelSerializer):
@@ -317,7 +340,7 @@ class TaskDetailSerializer(TaskListSerializer):
     comments = CommentSerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
     is_closed = serializers.SerializerMethodField()
-    team = TeamDetailSerializer(read_only=True)
+    team = TeamTasklSerializer(read_only=True)
 
     class Meta(TaskListSerializer.Meta):
         fields = TaskListSerializer.Meta.fields + [

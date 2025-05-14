@@ -23,10 +23,11 @@ class TeamViewSet(viewsets.ModelViewSet):
             return TeamCreateUpdateSerializer
         elif self.action in ['update', 'partial_update']:
             return TeamUpdateSerializer
-        return TeamDetailSerializer  # безопасный fallback
+        return TeamDetailSerializer
 
     def get_queryset(self):
-        return self.request.user.get_available_teams()
+        # Только неудалённые команды, доступные пользователю
+        return self.request.user.get_available_teams().filter(is_deleted=False)
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -44,7 +45,8 @@ class TeamViewSet(viewsets.ModelViewSet):
         team = self.get_object()
         if not request.user.can_manage_team(team):
             raise PermissionDenied("У вас нет прав на удаление этой команды.")
-        return super().destroy(request, *args, **kwargs)
+        team.delete()  # мягкое удаление
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'], url_path='add-member')
     def add_member(self, request, pk=None):
@@ -94,13 +96,12 @@ class TeamViewSet(viewsets.ModelViewSet):
 
         serializer = TeamDetailSerializer(team, context={'request': request})
         return Response(serializer.data, status=200)
-    
-    
+
     @action(detail=False, methods=['get'], url_path='all')
     def list_all_teams(self, request):
         """
-        Возвращает все команды (независимо от роли пользователя) в сокращённом формате
+        Возвращает все неудалённые команды (в сокращённом формате)
         """
-        teams = Team.objects.all()
+        teams = Team.active()  # только неудалённые
         serializer = TeamBasicSerializer(teams, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)

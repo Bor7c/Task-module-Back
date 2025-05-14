@@ -9,6 +9,7 @@ class Team(models.Model):
     description = models.TextField(blank=True, null=True, verbose_name='Описание')
     members = models.ManyToManyField('User', related_name='teams', blank=True, verbose_name='Участники')
     is_default = models.BooleanField(default=False, verbose_name='Команда по умолчанию')
+    is_deleted = models.BooleanField(default=False, verbose_name='Удалена')  # новое поле
 
     class Meta:
         verbose_name = 'Команда'
@@ -16,6 +17,11 @@ class Team(models.Model):
 
     def __str__(self):
         return self.name
+
+    def delete(self, *args, **kwargs):
+        """Мягкое удаление"""
+        self.is_deleted = True
+        self.save(update_fields=['is_deleted'])
 
     @classmethod
     def create_default_teams(cls):
@@ -32,6 +38,12 @@ class Team(models.Model):
                     'is_default': team_data['is_default']
                 }
             )
+
+    @classmethod
+    def active(cls):
+        """Возвращает только не удалённые команды"""
+        return cls.objects.filter(is_deleted=False)
+
 
 
 def sync_user_team_membership(user: 'User'):

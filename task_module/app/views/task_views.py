@@ -56,8 +56,11 @@ def update_overdue_tasks():
 class TaskListCreateView(generics.ListCreateAPIView):
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [IsAuthenticated]
-    queryset = Task.objects.filter(is_deleted=False).select_related('responsible', 'created_by')
-    
+    queryset = Task.objects.filter(
+        is_deleted=False,
+        team__is_deleted=False  # <--- добавлено условие
+    ).select_related('responsible', 'created_by')
+        
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return TaskCreateUpdateSerializer
@@ -118,7 +121,10 @@ class TaskListCreateView(generics.ListCreateAPIView):
 class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [RedisSessionAuthentication]
     permission_classes = [IsAuthenticated]
-    queryset = Task.objects.filter(is_deleted=False).select_related('responsible', 'created_by')
+    queryset = Task.objects.filter(
+        is_deleted=False,
+        team__is_deleted=False  # <--- добавлено условие
+    ).select_related('responsible', 'created_by')
     lookup_field = 'pk'
     
     def get_serializer_class(self):
@@ -215,7 +221,7 @@ class MyTeamTasksView(ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        available_teams = user.get_my_teams()
+        available_teams = user.get_my_teams().filter(is_deleted=False)  # <--- добавлена фильтрация по is_deleted
         return Task.objects.filter(team__in=available_teams, is_deleted=False)
     
 class MyResponsibleTasksView(ListAPIView):
@@ -223,14 +229,22 @@ class MyResponsibleTasksView(ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Task.objects.filter(responsible=self.request.user, is_deleted=False)
-    
+        return Task.objects.filter(
+            responsible=self.request.user,
+            is_deleted=False,
+            team__is_deleted=False  # <--- добавлено
+        )
+
 class MyCreatedTasksView(ListAPIView):
     serializer_class = TaskListSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Task.objects.filter(created_by=self.request.user, is_deleted=False)
+        return Task.objects.filter(
+            created_by=self.request.user,
+            is_deleted=False,
+            team__is_deleted=False  # <--- добавлено
+        )
 
 class AttachmentView(APIView):
     authentication_classes = [RedisSessionAuthentication]

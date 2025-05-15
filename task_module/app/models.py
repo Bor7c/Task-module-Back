@@ -111,7 +111,7 @@ class User(AbstractUser):
         return self.role in ['admin', 'manager']
 
     def can_remove_members_from_team(self, team):
-        return self.role == 'admin'
+        return self.role in ['admin', 'manager']
 
 
     class Meta:

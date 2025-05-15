@@ -113,14 +113,19 @@ class TeamCreateUpdateSerializer(serializers.ModelSerializer):
 
 
 class UserForTeamSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id',
             'username',
+            'full_name',
         ]
         read_only_fields = fields
+
+    def get_full_name(self, obj):
+        return obj.get_full_name()
 
 
 class UserBasicSerializer(serializers.ModelSerializer):
@@ -412,11 +417,11 @@ class TaskCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Невозможно создать задачу со статусом 'closed'")
         return value
 
-    def validate_team_id(self, team):
-        request = self.context.get('request')
-        if not request.user.get_available_teams().filter(pk=team.pk).exists():
-            raise serializers.ValidationError("У вас нет доступа к этой команде")
-        return team
+    # def validate_team_id(self, team):
+    #     request = self.context.get('request')
+    #     if not request.user.get_available_teams().filter(pk=team.pk).exists():
+    #         raise serializers.ValidationError("У вас нет доступа к этой команде")
+    #     return team
 
     def validate_responsible_id(self, responsible):
         team = self.initial_data.get('team_id')
